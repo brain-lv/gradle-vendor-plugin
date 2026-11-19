@@ -144,6 +144,9 @@ internal class VendorPropertySource(private val settings: Settings) {
  * @property dependencyExcludeClasses `vendor.dependencyExcludeClasses`.
  * @property dependencyExcludeJars `vendor.dependencyExcludeJars`.
  * @property gitExclude `vendor.gitExclude`: whether local plugin files are kept out of Git.
+ * @property patcher `vendor.patcher`: whether the numbered patches are applied before packaging. Defaults to `false`.
+ * @property patchesDir `vendor.patchesDir`: the folder with the numbered patch files, `internal-patches` by default.
+ * @property patchSourceDir the unpatched vendor folder when [patcher] is on; [vendorDir] is then the patched copy.
  */
 data class DistributorVendorConfig(
     val version: String,
@@ -157,7 +160,10 @@ data class DistributorVendorConfig(
     val compilePackages: List<String> = emptyList(),
     val dependencyExcludeClasses: List<String> = emptyList(),
     val dependencyExcludeJars: List<String> = emptyList(),
-    val gitExclude: Boolean = true
+    val gitExclude: Boolean = true,
+    val patcher: Boolean = false,
+    val patchesDir: File? = null,
+    val patchSourceDir: File? = null
 ) {
     companion object {
         private val CONSUMER_ONLY_KEYS = setOf(
@@ -217,7 +223,11 @@ data class DistributorVendorConfig(
                 compilePackages = CompilePackages.parse(src.get("vendor.compilePackages")),
                 dependencyExcludeClasses = DependencyExcludes.parseClasses(src.get("vendor.dependencyExcludeClasses")),
                 dependencyExcludeJars = DependencyExcludes.parseJars(src.get("vendor.dependencyExcludeJars")),
-                gitExclude = src.gitExclude()
+                gitExclude = src.gitExclude(),
+                patcher = src.get("vendor.patcher")?.let {
+                    it.lowercase().toBooleanStrictOrNull() ?: error("Invalid vendor.patcher '$it'. Use true or false.")
+                } ?: false,
+                patchesDir = src.resolvePath(src.get("vendor.patchesDir") ?: "internal-patches")
             )
         }
     }
@@ -258,7 +268,9 @@ data class ConsumerVendorConfig(
             "vendor.defaultCategory",
             "vendor.compilePackages",
             "vendor.dependencyExcludeClasses",
-            "vendor.dependencyExcludeJars"
+            "vendor.dependencyExcludeJars",
+            "vendor.patcher",
+            "vendor.patchesDir"
         )
         private val DISTRIBUTOR_ONLY_PREFIXES = setOf(
             "vendor.rule.",

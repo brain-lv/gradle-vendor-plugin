@@ -14,6 +14,8 @@ import lv.brain.gradle.core.DistributorVendorConfig
 import lv.brain.gradle.core.GitExcludeSource
 import lv.brain.gradle.core.GradleSupport
 import lv.brain.gradle.core.VendorRepositoryLayout.addVendorIvyRepository
+import lv.brain.gradle.patcher.VendorPatcherExtension
+import lv.brain.gradle.patcher.VendorPatcherPlugin
 import org.gradle.api.Action
 import org.gradle.api.GradleException
 import org.gradle.api.IsolatedAction
@@ -112,6 +114,16 @@ open class VendorDistributorSettingsExtension @Inject constructor(objects: Objec
      * When no category is declared at all, every jar goes to `core`. Defaults to `vendor.defaultCategory`.
      */
     val defaultCategory: Property<String> = objects.property(String::class.java)
+
+    /**
+     * When `true`, the `lv.brain.vendor-patcher` plugin is applied to the root project and the numbered patches of
+     * [patchesDir] are applied to a copy of the vendor folder (`build/vendor-patched/<name>`) before anything is
+     * scanned or packaged. Defaults to `vendor.patcher`, otherwise `false`.
+     */
+    val patcher: Property<Boolean> = objects.property(Boolean::class.java)
+
+    /** The folder with the numbered patch files. Defaults to `vendor.patchesDir`, otherwise `<root>/internal-patches`. */
+    val patchesDir: Property<File> = objects.property(File::class.java)
     internal val rules = mutableListOf<CategoryRule>()
     internal var customClassifier: CategoryClassifier? = null
 
@@ -176,11 +188,19 @@ class VendorDistributorSettingsPlugin : Plugin<Settings> {
         dslExt.dependencyExcludeClasses.convention(baseConfig.dependencyExcludeClasses)
         dslExt.dependencyExcludeJars.convention(baseConfig.dependencyExcludeJars)
         if (baseConfig.defaultCategoryExplicit) dslExt.defaultCategory.convention(baseConfig.defaultCategory)
+        dslExt.patcher.convention(baseConfig.patcher)
+        dslExt.patchesDir.convention(baseConfig.patchesDir)
 
         settings.gradle.settingsEvaluated {
             rejectPatternProjects(settings)
 
-            val resolvedVendorDir = dslExt.vendorDir.get()
+            val sourceVendorDir = dslExt.vendorDir.get()
+            val patcher = dslExt.patcher.get()
+            val resolvedVendorDir = if (patcher) {
+                File(settings.rootDir, "build/vendor-patched/${sourceVendorDir.name}")
+            } else {
+                sourceVendorDir
+            }
             val explicitDefaultCategory = dslExt.defaultCategory.orNull
 
             val effectiveConfig = baseConfig.copy(
@@ -191,7 +211,10 @@ class VendorDistributorSettingsPlugin : Plugin<Settings> {
                 vendorDir = resolvedVendorDir,
                 defaultCategory = explicitDefaultCategory ?: baseConfig.defaultCategory,
                 defaultCategoryExplicit = explicitDefaultCategory != null,
-                categoryRules = dslExt.rules + baseConfig.categoryRules
+                categoryRules = dslExt.rules + baseConfig.categoryRules,
+                patcher = patcher,
+                patchesDir = dslExt.patchesDir.get(),
+                patchSourceDir = if (patcher) sourceVendorDir else null
             )
 
             settings.dependencyResolutionManagement {
@@ -218,6 +241,19 @@ internal class PrepareDistributorProject(
         project.extensions.configure(VendorDistributorProjectExtension::class.java) {
             this.vendorConfig = config
             this.customClassifier = classifier
+        }
+
+        val patchSource = config.patchSourceDir
+        if (project.path == ":" && config.patcher && patchSource != null) {
+            project.plugins.apply(VendorPatcherPlugin::class.java)
+            project.extensions.configure(VendorPatcherExtension::class.java) {
+                sourceDir.set(patchSource)
+                config.patchesDir?.let { patchesDir.set(it) }
+                outputDir.set(config.vendorDir)
+            }
+            listOf("resolveVendorModules", "generateVendorIvyRepo", "packageVendorDistribution").forEach { name ->
+                project.tasks.named(name) { dependsOn("applyVendorPatches") }
+            }
         }
     }
 }

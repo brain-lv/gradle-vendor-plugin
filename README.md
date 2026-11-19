@@ -27,6 +27,7 @@ dependencies { implementation(vendor.bundle("client")) }
 * [2. Consumer setup](#2-consumer-setup-using-the-vendor-sdk-in-your-app)
 * [3. Local development and overrides](#3-local-development--overrides)
 * [Gradle versions and Isolated Projects](#gradle-versions-and-isolated-projects)
+* [Patching vendor files](#patching-vendor-files)
 * [Build cache](#build-cache)
 * [Direct dependencies only](#direct-dependencies-only)
 * [Leaving classes and jars out of the dependency check](#leaving-classes-and-jars-out-of-the-dependency-check)
@@ -69,6 +70,7 @@ full instructions are in [`AGENTS.md`](AGENTS.md).
 | ----- | ----- | ----- |
 | `lv.brain.vendor-distributor` | `settings.gradle.kts` | Adds the `resolveVendorModules`, `generateVendorIvyRepo` and `packageVendorDistribution` tasks, which build the distribution ZIP from your vendor folder. Nothing runs during Gradle sync. |
 | `lv.brain.vendor-consumer` | `settings.gradle.kts` | Downloads (and caches) the vendor ZIP, makes it available to your build and applies the project plugin to every project. |
+| `lv.brain.vendor-patcher` | `build.gradle.kts` | Applies numbered patch files to a copy of the vendor folder, including text files inside JARs. Applied automatically by the distributor with `vendor.patcher=true`; also usable on its own. See [Patching vendor files](#patching-vendor-files). |
 | `lv.brain.vendor-consumer-project` | `build.gradle.kts` | Project plugin, applied automatically by the consumer settings plugin. Apply it yourself in the Kotlin DSL to get the typed `vendor` accessor (`vendor.bundle("...")`, `vendor.module("...")`). It also registers the classpath clash check. |
 
 ## 1. Distributor Setup (Packaging the Vendor SDK)
@@ -415,6 +417,88 @@ What that means for your builds:
 * The configuration cache entry is reused from the second build on, also right after a new version was downloaded.
 * The authentication token is only used to download the archive; it is not stored in the configuration cache.
 
+## Patching vendor files
+
+Sometimes a vendor JAR needs a fix you cannot wait for: a wrong default in a `.properties` file, a broken XML descriptor, a script with a typo. Put numbered patch files into `internal-patches/` and switch the patcher on in the distributor's `vendor.properties`:
+
+```properties
+vendor.patcher=true
+# optional, default: internal-patches
+# vendor.patchesDir=third-party-patches
+```
+
+or in `settings.gradle.kts`:
+
+```kotlin
+vendorDistributor {
+    patcher.set(true)
+    patchesDir.set(File(rootDir, "internal-patches"))
+}
+```
+
+```
+internal-patches/
+├── 001-longer-timeout.patch
+├── 002-fix-login-descriptor.patch
+└── README.md                      (ignored: no number)
+```
+
+Each step is a unified diff, as written by `diff -u` or `git diff`, with paths relative to the vendor folder. A path with `!/` changes a text file inside a JAR:
+
+```diff
+--- a/client/lib/app-1.0.jar!/META-INF/app.properties
++++ b/client/lib/app-1.0.jar!/META-INF/app.properties
+@@ -1,3 +1,3 @@
+ name=demo
+-timeout=30
++timeout=60
+ retries=3
+```
+
+What happens:
+
+* `applyVendorPatches` copies the vendor folder to `build/vendor-patched/<folder name>` and applies the steps to the copy, in number order. The vendor folder itself is never changed, so a vendor upgrade is just replacing its files.
+* The distributor then scans and packages the patched copy; the distribution carries the patched JARs. Point `vendor.localDir` of a consumer at `build/vendor-patched/<folder name>` to use the patched folder directly.
+* The step runs only when a vendor file, a patch file or an option changed, and it can be taken from the build cache.
+* Steps can change, create and delete plain files and text files inside JARs. A hunk that moved a few lines is still applied (the report notes the offset). Line endings of the file are kept.
+
+When a step does not apply, the build stops before writing anything and prints which step, file and hunk failed, the lines the patch expected next to the closest lines in the file, the likely cause and how to fix it, for example:
+
+```
+Vendor patch step 2 of 3 failed: 002-fix-login-descriptor.patch
+File: client/lib/app-1.0.jar!/META-INF/login.xml
+
+hunk 1 of 1: @@ -10,4 +10,4 @@
+Expected (from the patch), at line 10:
+       10 |   <timeout>30</timeout>
+Closest match in the file, at line 12 (3 of 4 lines equal, '!' marks a difference):
+  !    12 |   <timeout>45</timeout>
+
+Likely cause: The file changed since the patch was made, most likely in a vendor upgrade.
+How to fix:
+  1. Open the file in the unpatched vendor folder, make the change again by hand and recreate the patch ...
+```
+
+The causes it recognises: the change is already there (the vendor fixed it, delete the step), only whitespace or line endings differ, the file changed, the file or JAR was moved or renamed (with suggestions where it is now, including a JAR with a new version number), the paths have a leading folder too many, a binary file, a signed JAR, and a patch file that is not a unified diff. `checkVendorPatches` runs the same steps on a temporary copy without writing anything, which is handy in CI right after a vendor upgrade. The last report is in `build/reports/vendor-patches/`.
+
+Options in `vendorPatcher { }` (root `build.gradle(.kts)`):
+
+| Option | Default | Description |
+| ----- | ----- | ----- |
+| `ignoreWhitespace` | `false` | Also apply where the file differs only in spaces, tabs or line endings. |
+| `stripJarSignatures` | `false` | Remove the signature files from JARs that a step changes. Without it, patching a signed JAR fails, because the JVM would refuse the changed JAR. |
+| `sourceDir`, `patchesDir`, `outputDir` | set by the distributor | For the plugin on its own: `vendor`, `internal-patches` and `build/vendor-patched/<name>` of the project. |
+
+On its own, in any project:
+
+```kotlin
+plugins {
+    id("lv.brain.vendor-patcher") version "<plugin-version>"
+}
+```
+
+Numbers must be unique (`001` twice stops the build), a gap in the numbers only warns, and files whose name does not start with a number are ignored. Gradle script steps (`.gradle`, `.gradle.kts`) and replacing compiled classes are not supported yet.
+
 ## Build cache
 
 All three distributor tasks can be taken from the Gradle build cache, so a clean checkout, a CI agent or a teammate does not redo the work when the vendor jars and settings are the same. Turn the build cache on in the distributor's `gradle.properties`:
@@ -551,6 +635,8 @@ A third-party library that asks for a *lower* version than the vendor's is not a
 | `vendor.rule.<n>` | — | — | — | Regex rule `<regex> -> <group>` for JARs without coordinates of their own. Rules are tried in the alphabetical order of their keys (`vendor.rule.10` comes before `vendor.rule.2`). |
 | `vendor.category.<name>` | `category("<name>") { include(...) }` | — | — | Comma-separated Ant-style patterns (relative to `vendor.dir`) assigning jars to a category; same rules as `include(...)`. |
 | `vendor.gitExclude` | — | `VENDOR_GIT_EXCLUDE` | `true` | Keeps `vendor.local.properties` and `.vendor/` out of Git. See [Keeping local files out of Git](#keeping-local-files-out-of-git). |
+| `vendor.patcher` | `patcher` | — | `false` | Applies the numbered patches before scanning and packaging. See [Patching vendor files](#patching-vendor-files). |
+| `vendor.patchesDir` | `patchesDir` | — | `internal-patches` | Folder with the numbered patch files. |
 | — | `classifier { relativePath, jar -> category or null }` | — | — | Custom classifier, runs before the includes. Disables up-to-date checks and the configuration cache for the vendor tasks. |
 
 ### Consumer properties (`vendor.properties` / `vendor.local.properties`)
@@ -585,6 +671,8 @@ A third-party library that asks for a *lower* version than the vendor's is not a
 | `resolveVendorModules` | distributor, root project | `build/vendor/module-dependencies.json` |
 | `generateVendorIvyRepo` | distributor, root project | `<vendor.dir>/ivy/` |
 | `packageVendorDistribution` | distributor, root project | `build/distributions/vendor-sdk-<vendor.version>.zip` |
+| `applyVendorPatches` | patcher (distributor root project with `vendor.patcher=true`) | `build/vendor-patched/<vendor folder name>/` |
+| `checkVendorPatches` | patcher | `build/vendor-patches/check.ok`, report in `build/reports/vendor-patches/` |
 | `verify<SourceSet>VendorClasspath` (`verifyVendorClasspath`, `verifyTestVendorClasspath`, ...) | consumer, every project with a Java plugin, when the clash check is active | `build/vendor/<task name>.ok` |
 
 ### `module-dependencies.json`
@@ -605,6 +693,8 @@ A third-party library that asks for a *lower* version than the vendor's is not a
 | `vendor.module(): no module ...` / `vendor.module(): '<name>' exists in several groups` | Check the name against the listed modules, or pass the group. |
 | `Vendor runtime jars clash with the dependencies of ...` | See "Vendor jars that clash with your own dependencies". |
 | `Breaking circular vendor JAR dependency` | A warning, not an error: see "Troubleshooting: circular vendor jar dependencies". |
+| `Vendor patch step <n> of <m> failed` | A patch step does not apply; the message names the file, the hunk, the likely cause and the fix. See [Patching vendor files](#patching-vendor-files). |
+| `Invalid patch steps in ...` | Two steps share a number, or a numbered file is not a `.patch`/`.diff`. |
 
 ## Running plugin tests
 

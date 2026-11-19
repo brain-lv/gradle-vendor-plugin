@@ -154,6 +154,21 @@ gradlePlugin {
                 }
             }
         }
+        create("vendorPatcher") {
+            id = "lv.brain.vendor-patcher"
+            displayName = "Vendor Patcher: apply numbered patch files to vendor JARs and folders"
+            description = "Applies numbered unified-diff patches (001-fix.patch, 002-...) to a copy of a vendor " +
+                "folder, including text files inside JARs (app.jar!/META-INF/app.xml). Stops at the first failing step " +
+                "with the file, hunk, likely cause and fix. Cacheable; applied automatically by " +
+                "lv.brain.vendor-distributor with vendor.patcher=true."
+            tags.set(listOf("patch", "diff", "vendor", "jar", "local-jars", "dependencies"))
+            implementationClass = "lv.brain.gradle.patcher.VendorPatcherPlugin"
+            compatibility {
+                features {
+                    configurationCache = true
+                }
+            }
+        }
         create("vendorConsumerProject") {
             id = "lv.brain.vendor-consumer-project"
             displayName = "Vendor JARs Consumer (project helper)"
