@@ -1,0 +1,362 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * Copyright (c) 2026 brain-lv (https://github.com/brain-lv)
+ */
+
+package lv.brain.gradle.distributor
+
+import lv.brain.gradle.core.CategoryRule
+import lv.brain.gradle.core.CompilePackages
+import lv.brain.gradle.core.DependencyExcludes
+import lv.brain.gradle.core.DistributorVendorConfig
+import lv.brain.gradle.core.GitExcludeManager
+import lv.brain.gradle.core.GradleSupport
+import lv.brain.gradle.core.VendorRepositoryLayout.addVendorIvyRepository
+import org.gradle.api.Action
+import org.gradle.api.GradleException
+import org.gradle.api.IsolatedAction
+import org.gradle.api.Plugin
+import org.gradle.api.Project
+import org.gradle.api.initialization.ProjectDescriptor
+import org.gradle.api.initialization.Settings
+import org.gradle.api.model.ObjectFactory
+import org.gradle.api.provider.ListProperty
+import org.gradle.api.provider.Property
+import java.io.File
+import javax.inject.Inject
+
+/**
+ * Selects the jars of one category inside `vendorDistributor { category("<name>") { ... } }`.
+ *
+ * Each category becomes a bundle that consumers add with `vendor.bundle("<name>")`.
+ *
+ * @property name the category name; it is also the name of the published bundle.
+ */
+open class CategorySpec(val name: String) {
+    internal val patterns = mutableListOf<String>()
+
+    /**
+     * Adds jars to this category by Ant-style patterns relative to the vendor directory.
+     *
+     * A pattern that names a directory (`client/lib` or `client/lib/`) selects every jar below it, and a leading
+     * `<vendor dir name>/` is accepted. A jar belongs to the first category whose pattern matches it; only jars matched
+     * by some category are packaged, unless [VendorDistributorSettingsExtension.defaultCategory] is set.
+     *
+     * ```kotlin
+     * category("client") { include("client/lib", "shared/client-api.jar") }
+     * ```
+     *
+     * @param globs one or more Ant-style patterns (`*`, `**`, `?`).
+     */
+    fun include(vararg globs: String) {
+        patterns.addAll(globs)
+    }
+}
+
+/**
+ * The `vendorDistributor { }` block in `settings.gradle(.kts)`, added by the `lv.brain.vendor-distributor` plugin.
+ *
+ * Every value starts with what `vendor.properties` says and can be overridden here.
+ *
+ * ```kotlin
+ * vendorDistributor {
+ *     slimJars.set(true)
+ *     compilePackages.add("com.vendor")
+ *     category("client") { include("client/lib") }
+ *     category("server") { include("server/lib") }
+ * }
+ * ```
+ */
+open class VendorDistributorSettingsExtension @Inject constructor(objects: ObjectFactory) {
+    /**
+     * Whether smaller `-slim.jar` copies of the jars are generated for compilation.
+     * The original jars are still used at runtime and in tests. Defaults to `vendor.slimJars`, otherwise `false`.
+     */
+    val slimJars: Property<Boolean> = objects.property(Boolean::class.java)
+    /**
+     * The directory that holds the vendor jars. Defaults to `vendor.dir`, otherwise `<root>/vendor`.
+     * The generated Ivy repository is written to its `ivy/` subdirectory.
+     */
+    val vendorDir: Property<File> = objects.property(File::class.java)
+
+    /**
+     * Package prefixes (`com.vendor`) of the jars that consumers compile against.
+     *
+     * Every other jar is only on the runtime classpath, except jars that the public API of a compile jar needs.
+     * When empty, every jar is a compile jar. Defaults to `vendor.compilePackages`.
+     */
+    val compilePackages: ListProperty<String> = objects.listProperty(String::class.java)
+
+    /**
+     * Classes and packages (`com.vendor.shaded`, `com.vendor.Legacy`, `com.*.internal.**`) that the check for
+     * dependencies between the jars ignores: they create no dependency, and no dependency on the jar that holds them.
+     *
+     * Whether a jar is a compile jar is still decided by [compilePackages] alone. Defaults to `vendor.dependencyExcludeClasses`.
+     */
+    val dependencyExcludeClasses: ListProperty<String> = objects.listProperty(String::class.java)
+
+    /**
+     * Jars that the check for dependencies between the jars leaves out, as a prefix of their path in the vendor
+     * directory (`client/lib/legacy-`) or an Ant-style pattern.
+     *
+     * They are still packaged and still belong to their category. Defaults to `vendor.dependencyExcludeJars`.
+     */
+    val dependencyExcludeJars: ListProperty<String> = objects.listProperty(String::class.java)
+
+    /**
+     * Category for jars that no `category { include(...) }` matches.
+     *
+     * When it is not set and at least one category is declared, such jars are left out of the distribution.
+     * When no category is declared at all, every jar goes to `core`. Defaults to `vendor.defaultCategory`.
+     */
+    val defaultCategory: Property<String> = objects.property(String::class.java)
+    internal val rules = mutableListOf<CategoryRule>()
+    internal var customClassifier: CategoryClassifier? = null
+
+    /**
+     * Declares a category and selects its jars.
+     *
+     * ```kotlin
+     * category("client") { include("client/lib") }      // Kotlin DSL
+     * category('client') { include 'client/lib' }        // Groovy DSL
+     * ```
+     *
+     * Can be called several times; categories are matched in the order they are declared.
+     *
+     * @param name the category name, used as the bundle name (`vendor.bundle("<name>")`).
+     * @param configure selects the jars of the category, see [CategorySpec.include].
+     */
+    fun category(name: String, configure: Action<in CategorySpec>) {
+        val spec = CategorySpec(name)
+        configure.execute(spec)
+        rules.add(CategoryRule(name, spec.patterns.toList()))
+    }
+
+    /**
+     * Assigns categories by code instead of (or in addition to) [category] includes.
+     *
+     * The function gets the path of each jar relative to the vendor directory and the jar file, and returns the
+     * category name, or `null` to leave the jar to the include patterns. A build that uses a classifier cannot be stored
+     * in the configuration cache, and `resolveVendorModules` then always runs.
+     *
+     * @param fn the classifier, see [CategoryClassifier].
+     */
+    fun classifier(fn: CategoryClassifier) {
+        customClassifier = fn
+    }
+}
+
+/**
+ * The `lv.brain.vendor-distributor` settings plugin: packages a folder of vendor jars as a versioned distribution.
+ *
+ * Apply it in `settings.gradle(.kts)` and configure it with `vendor.properties` and the `vendorDistributor { }` block
+ * ([VendorDistributorSettingsExtension]). It adds these tasks to the root project:
+ *
+ * - `resolveVendorModules` selects jars by the category includes and resolves the dependencies between them
+ * - `generateVendorIvyRepo` writes the Ivy repository (module metadata, slim jars, bundles) to `<vendorDir>/ivy`
+ * - `packageVendorDistribution` runs both and zips the result to `build/distributions/vendor-sdk-<version>.zip`
+ *
+ * Nothing is scanned or generated during configuration or IDE sync; all work happens when a task runs.
+ */
+class VendorDistributorSettingsPlugin : Plugin<Settings> {
+    override fun apply(settings: Settings) {
+        GradleSupport.requireSupported("lv.brain.vendor-distributor")
+        val baseConfig = DistributorVendorConfig.load(settings)
+        if (baseConfig.gitExclude) GitExcludeManager.ensureExcluded(settings.rootDir)
+
+        val dslExt = settings.extensions.create(
+            "vendorDistributor",
+            VendorDistributorSettingsExtension::class.java
+        )
+        dslExt.slimJars.convention(baseConfig.slimJars)
+        dslExt.vendorDir.convention(baseConfig.vendorDir)
+        dslExt.compilePackages.convention(baseConfig.compilePackages)
+        dslExt.dependencyExcludeClasses.convention(baseConfig.dependencyExcludeClasses)
+        dslExt.dependencyExcludeJars.convention(baseConfig.dependencyExcludeJars)
+        if (baseConfig.defaultCategoryExplicit) dslExt.defaultCategory.convention(baseConfig.defaultCategory)
+
+        settings.gradle.settingsEvaluated {
+            rejectPatternProjects(settings)
+
+            val resolvedVendorDir = dslExt.vendorDir.get()
+            val explicitDefaultCategory = dslExt.defaultCategory.orNull
+
+            val effectiveConfig = baseConfig.copy(
+                slimJars = dslExt.slimJars.get(),
+                compilePackages = dslExt.compilePackages.get().mapNotNull { CompilePackages.normalize(it) }.distinct(),
+                dependencyExcludeClasses = dslExt.dependencyExcludeClasses.get().mapNotNull { DependencyExcludes.normalizeClass(it) }.distinct(),
+                dependencyExcludeJars = dslExt.dependencyExcludeJars.get().mapNotNull { DependencyExcludes.normalizeJar(it) }.distinct(),
+                vendorDir = resolvedVendorDir,
+                defaultCategory = explicitDefaultCategory ?: baseConfig.defaultCategory,
+                defaultCategoryExplicit = explicitDefaultCategory != null,
+                categoryRules = dslExt.rules + baseConfig.categoryRules
+            )
+
+            settings.dependencyResolutionManagement {
+                repositories {
+                    addVendorIvyRepository(DISTRIBUTOR_REPOSITORY_NAME, resolvedVendorDir)
+                }
+            }
+
+            settings.gradle.lifecycle.beforeProject(PrepareDistributorProject(effectiveConfig, dslExt.customClassifier))
+        }
+    }
+}
+
+private const val DISTRIBUTOR_REPOSITORY_NAME = "VendorDistributorLocalIvy"
+
+internal class PrepareDistributorProject(
+    private val config: DistributorVendorConfig,
+    private val classifier: CategoryClassifier?
+) : IsolatedAction<Project> {
+    override fun execute(project: Project) {
+        project.repositories.addVendorIvyRepository(DISTRIBUTOR_REPOSITORY_NAME, config.vendorDir)
+
+        project.plugins.apply(VendorDistributorProjectPlugin::class.java)
+        project.extensions.configure(VendorDistributorProjectExtension::class.java) {
+            this.vendorConfig = config
+            this.customClassifier = classifier
+        }
+    }
+}
+
+/**
+ * The `vendorDistributor` extension of each project in a distributor build, set up by the settings plugin.
+ *
+ * Gives build scripts read access to the effective configuration and the bundle coordinates.
+ */
+open class VendorDistributorProjectExtension {
+    /** The effective configuration: `vendor.properties` merged with the `vendorDistributor { }` block. */
+    lateinit var vendorConfig: DistributorVendorConfig
+    /** The classifier set with [VendorDistributorSettingsExtension.classifier], or `null`. */
+    var customClassifier: CategoryClassifier? = null
+
+    /** `true` when jars that match no category include are left out of the distribution. */
+    fun skipsUnclassifiedJars(): Boolean =
+        vendorConfig.categoryRules.isNotEmpty() && !vendorConfig.defaultCategoryExplicit
+
+    /** The categories known from the configuration alone, without reading any jar. */
+    fun declaredCategories(): List<String> =
+        (vendorConfig.categoryRules.map { it.category } +
+            if (skipsUnclassifiedJars()) emptyList() else listOf(vendorConfig.defaultCategory)).distinct()
+
+    /**
+     * The dependency notation of a category bundle, `<defaultGroup>.bundle:<category>:<version>`.
+     *
+     * @param category the category name.
+     */
+    fun bundle(category: String): String =
+        "${vendorConfig.defaultGroup}.bundle:$category:${vendorConfig.version}"
+}
+
+/**
+ * Applied to every project of a distributor build by [VendorDistributorSettingsPlugin]; do not apply it yourself.
+ *
+ * Adds the [VendorDistributorProjectExtension], a `vendor<Category>` configuration per declared category, and, in the
+ * root project, the `resolveVendorModules`, `generateVendorIvyRepo` and `packageVendorDistribution` tasks.
+ */
+class VendorDistributorProjectPlugin : Plugin<Project> {
+    override fun apply(project: Project) {
+        val ext = project.extensions.create("vendorDistributor", VendorDistributorProjectExtension::class.java)
+
+        project.afterEvaluate {
+            ext.declaredCategories().forEach { category ->
+                val cfgName = "vendor" + category.split('-').joinToString("") { part ->
+                    part.replaceFirstChar { it.uppercase() }
+                }
+                if (configurations.findByName(cfgName) == null) {
+                    val cfg = configurations.create(cfgName)
+                    dependencies.add(cfg.name, ext.bundle(category))
+                }
+            }
+        }
+
+        if (project.path == ":") registerTasks(project, ext)
+    }
+
+    private fun registerTasks(project: Project, ext: VendorDistributorProjectExtension) {
+        val vendorDir = project.layout.dir(project.provider { ext.vendorConfig.vendorDir })
+        val ivyDir = project.layout.dir(project.provider { File(ext.vendorConfig.vendorDir, VendorJarScanner.IVY_DIR_NAME) })
+        val graphFile = project.layout.buildDirectory.file("vendor/module-dependencies.json")
+
+        val resolve = project.tasks.register("resolveVendorModules", ResolveModuleDependenciesTask::class.java) {
+            group = "vendor"
+            description = "Selects vendor JARs by the category includes and resolves the dependencies between them."
+            this.vendorDir.set(vendorDir)
+            defaultOrg.set(project.provider { ext.vendorConfig.defaultGroup })
+            defaultVersion.set(project.provider { ext.vendorConfig.version })
+            categoryRules.set(project.provider { ext.vendorConfig.categoryRules })
+            groupRules.set(project.provider { ext.vendorConfig.groupRules })
+            compilePackages.set(project.provider { ext.vendorConfig.compilePackages })
+            dependencyExcludeClasses.set(project.provider { ext.vendorConfig.dependencyExcludeClasses })
+            dependencyExcludeJars.set(project.provider { ext.vendorConfig.dependencyExcludeJars })
+            fallbackCategory.set(project.provider { ext.vendorConfig.defaultCategory })
+            skipUnclassified.set(project.provider { ext.skipsUnclassifiedJars() })
+            dependencyGraphFile.set(graphFile)
+
+            ext.customClassifier?.let { custom ->
+                classifier = custom
+                outputs.upToDateWhen { false }
+                outputs.cacheIf { false }
+                notCompatibleWithConfigurationCache("vendorDistributor { classifier { ... } } is a lambda")
+            }
+        }
+
+        val generate = project.tasks.register("generateVendorIvyRepo", GenerateVendorIvyRepoTask::class.java) {
+            group = "vendor"
+            description = "Generates the virtual Ivy repository (module metadata, slim JARs, category bundles) in the vendor directory."
+            this.vendorDir.set(vendorDir)
+            dependencyGraphFile.set(resolve.flatMap { it.dependencyGraphFile })
+            versionString.set(project.provider { ext.vendorConfig.version })
+            bundleGroup.set(project.provider { "${ext.vendorConfig.defaultGroup}.bundle" })
+            slimJars.set(project.provider { ext.vendorConfig.slimJars })
+            this.ivyDir.set(ivyDir)
+        }
+
+        project.tasks.register("packageVendorDistribution", PackageVendorZipTask::class.java) {
+            group = "vendor"
+            description = "Packages the selected vendor JARs and the generated ivy/ metadata into a distribution ZIP."
+            this.vendorDir.set(vendorDir)
+            this.ivyDir.set(generate.flatMap { it.ivyDir })
+            dependencyGraphFile.set(resolve.flatMap { it.dependencyGraphFile })
+            versionString.set(project.provider { ext.vendorConfig.version })
+            outputZip.set(
+                project.layout.buildDirectory.file(
+                    project.provider { "distributions/vendor-sdk-${ext.vendorConfig.version}.zip" }
+                )
+            )
+        }
+    }
+}
+
+private const val PATTERN_CHARS = "*?[]{}"
+
+private fun ProjectDescriptor.descendants(): Sequence<ProjectDescriptor> =
+    children.asSequence().flatMap { sequenceOf(it) + it.descendants() }
+
+private fun rejectPatternProjects(settings: Settings) {
+    val offenders = settings.rootProject.descendants()
+        .filter { project -> project.name.any { it in PATTERN_CHARS } }
+        .map { it.name }
+        .toList()
+    if (offenders.isEmpty()) return
+
+    val example = offenders.first()
+    throw GradleException(
+        "The settings script calls include(...) with vendor file pattern(s) outside a category, which makes Gradle " +
+            "create project(s) ${offenders.joinToString { "':$it'" }} instead of selecting jars.\n\n" +
+            "Vendor patterns belong inside a category.\n" +
+            "  Kotlin DSL (settings.gradle.kts):\n" +
+            "    vendorDistributor {\n" +
+            "        category(\"<name>\") { include(\"$example\") }\n" +
+            "    }\n" +
+            "  Groovy DSL (settings.gradle):\n" +
+            "    vendorDistributor {\n" +
+            "        category('<name>') { include '$example' }\n" +
+            "    }\n" +
+            "  or in vendor.properties:  vendor.category.<name>=$example\n\n" +
+            "Move the include(...) call into a category block, or remove it."
+    )
+}
