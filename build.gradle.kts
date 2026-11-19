@@ -50,6 +50,13 @@ java {
     }
 }
 
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    compilerOptions {
+        apiVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_0)
+        languageVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_0)
+    }
+}
+
 dependencies {
     implementation("org.ow2.asm:asm:9.11.1")
     // ClassRemapper/Remapper live in asm-commons; the relocated copy inside Gradle (org.gradle.internal.impldep)
