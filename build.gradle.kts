@@ -10,7 +10,6 @@ import org.gradle.plugin.compatibility.compatibility
 plugins {
     `kotlin-dsl`
     `java-gradle-plugin`
-    jacoco
     signing
 
     id("com.gradle.plugin-publish") version "2.2.1"
@@ -38,7 +37,7 @@ spotless {
     }
 }
 group = "lv.brain"
-version = "2.0.1"
+version = "2.0.2"
 
 repositories {
     mavenCentral()
@@ -76,15 +75,6 @@ tasks.test {
     testLogging {
         showStandardStreams = true
         events("passed", "skipped", "failed")
-    }
-    finalizedBy(tasks.jacocoTestReport)
-}
-
-tasks.jacocoTestReport {
-    dependsOn(tasks.test)
-    reports {
-        xml.required.set(true)
-        html.required.set(true)
     }
 }
 
