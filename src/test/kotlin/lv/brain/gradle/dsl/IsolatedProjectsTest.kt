@@ -54,8 +54,8 @@ abstract class IsolatedProjectsTest(dsl: Dsl) : PluginTestBase(dsl) {
         assertTrue("Configuration cache entry stored" in first.output, why(first.output))
         assertTrue(distribution().keys.any { it.endsWith("client-2026.1.0.module") }, why(distribution().keys))
 
-        // The plugin creates .git/info/exclude while configuring the first time, which invalidates that entry once; the entry
-        // stored by the second run is the one that is reused.
+        // The plugin creates .git/info/exclude while configuring the first time, through a value source, so the entry stays
+        // valid; the second and the third run both reuse it.
         gradle(sdkDir, "packageVendorDistribution", isolated)
         val third = gradle(sdkDir, "packageVendorDistribution", isolated)
         assertTrue("Reusing configuration cache" in third.output, why(third.output))
@@ -162,8 +162,8 @@ abstract class IsolatedProjectsTest(dsl: Dsl) : PluginTestBase(dsl) {
             assertEquals(3, printed(first.output, "service", "COMPILE").size, why(first.output))
             assertEquals(2, printed(first.output, "worker", "COMPILE").size, why(first.output))
 
-            // Unpacking creates the `.vendor-ready` marker while the first build is configured, which makes the entry of that
-            // build out of date once; the entry stored by the second build is the one that is reused.
+            // The first build downloads and unpacks a version it did not have, which makes its entry out of date once; the
+            // entry stored by the second build is reused, and no later build asks the server again.
             val requestsAfterFirstBuild = server.requests.size
             gradle(appDir, "service:printClasspaths", "worker:printClasspaths", isolated)
             val third = gradle(appDir, "service:printClasspaths", "worker:printClasspaths", isolated)

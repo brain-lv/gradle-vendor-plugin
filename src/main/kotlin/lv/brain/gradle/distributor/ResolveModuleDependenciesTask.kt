@@ -59,6 +59,11 @@ abstract class ResolveModuleDependenciesTask : DefaultTask() {
     val vendorJars: FileTree
         get() = VendorJarScanner.jarTree(vendorDir)
 
+    /** The name of [vendorDir]; include patterns may start with it. */
+    @get:Input
+    val vendorDirName: String
+        get() = vendorDir.get().asFile.name
+
     /** Base group for jars without embedded coordinates. */
     @get:Input
     @get:Optional

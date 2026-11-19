@@ -7,6 +7,7 @@
 
 package lv.brain.gradle.distributor
 
+import lv.brain.gradle.core.ReproducibleEntries.withFixedTime
 import org.objectweb.asm.ClassReader
 import org.objectweb.asm.ClassVisitor
 import org.objectweb.asm.ClassWriter
@@ -20,9 +21,6 @@ import java.util.jar.JarOutputStream
 
 object SlimJarGenerator {
     fun generateSlimJar(sourceJar: File, targetSlimJar: File) {
-        if (targetSlimJar.exists() && targetSlimJar.lastModified() >= sourceJar.lastModified()) {
-            return
-        }
         targetSlimJar.parentFile.mkdirs()
 
         JarFile(sourceJar).use { inputJar ->
@@ -39,7 +37,7 @@ object SlimJarGenerator {
                             val rawBytes = inputJar.getInputStream(entry).use { it.readBytes() }
                             val slimBytes = stripClassBytecode(rawBytes)
                             if (slimBytes != null) {
-                                outJar.putNextEntry(JarEntry(entry.name))
+                                outJar.putNextEntry(JarEntry(entry.name).withFixedTime())
                                 outJar.write(slimBytes)
                                 outJar.closeEntry()
                             }
@@ -48,7 +46,7 @@ object SlimJarGenerator {
                         entry.name == "META-INF/MANIFEST.MF" ||
                         entry.name.startsWith("META-INF/services/") ||
                         entry.name.endsWith(".kotlin_module") -> {
-                            outJar.putNextEntry(JarEntry(entry.name))
+                            outJar.putNextEntry(JarEntry(entry.name).withFixedTime())
                             inputJar.getInputStream(entry).use { it.copyTo(outJar) }
                             outJar.closeEntry()
                         }

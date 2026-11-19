@@ -12,6 +12,7 @@ import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.FileTree
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.InputFiles
@@ -20,7 +21,6 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
-import org.gradle.work.DisableCachingByDefault
 
 /**
  * The `generateVendorIvyRepo` task: writes the Ivy repository of the distribution to `<vendorDir>/ivy`.
@@ -28,7 +28,7 @@ import org.gradle.work.DisableCachingByDefault
  * Describes every selected jar and every category bundle so that Gradle can resolve them, and, with [slimJars],
  * adds the `-slim.jar` files used for compilation.
  */
-@DisableCachingByDefault(because = "Generates Ivy repository into vendor directory")
+@CacheableTask
 abstract class GenerateVendorIvyRepoTask : DefaultTask() {
     /** The directory that holds the vendor jars. */
     @get:Internal
@@ -39,6 +39,11 @@ abstract class GenerateVendorIvyRepoTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     val vendorJars: FileTree
         get() = VendorJarScanner.jarTree(vendorDir)
+
+    /** Where [ivyDir] lies inside [vendorDir]; the generated metadata refers to the jars relative to it. */
+    @get:Input
+    val ivyDirInVendorDir: String
+        get() = ivyDir.get().asFile.relativeTo(vendorDir.get().asFile).invariantSeparatorsPath
 
     /** The module graph written by `resolveVendorModules`. */
     @get:InputFile

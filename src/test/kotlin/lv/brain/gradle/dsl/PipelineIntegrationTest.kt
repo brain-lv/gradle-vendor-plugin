@@ -75,9 +75,9 @@ abstract class PipelineIntegrationTest(dsl: Dsl) : PluginTestBase(dsl) {
         val stored = gradle(sdkDir, *args)
         assertTrue("Configuration cache entry stored" in stored.output, why(stored.output))
 
-        // The plugin adds its entries to .git/info/exclude while the build is configured. When that creates or changes the file,
-        // the entry that the same run stored is out of date, so the run after the first one configures once more. From
-        // then on the file no longer changes and the entry has to be reused.
+        // The plugin adds its entries to .git/info/exclude while the build is configured, but through a value source, so
+        // writing the file does not make the stored entry out of date. Every later run has to reuse the entry; the
+        // second run is checked by BuildCacheTest, this one also checks a third run.
         gradle(sdkDir, *args)
 
         val reused = gradle(sdkDir, *args)

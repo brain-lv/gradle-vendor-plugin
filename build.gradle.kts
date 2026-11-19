@@ -127,9 +127,12 @@ gradlePlugin {
     plugins {
         create("vendorDistributor") {
             id = "lv.brain.vendor-distributor"
-            displayName = "Vendor SDK Distributor Plugin"
-            description = "Settings plugin (apply in settings.gradle.kts: plugins { id(\"lv.brain.vendor-distributor\") }) that packages vendor JAR directories into a virtual Ivy repository with automatic module dependency resolution and optional slim ABI JARs."
-            tags.set(listOf("vendor", "ivy", "packaging", "dependencies"))
+            displayName = "Vendor JARs Distributor: package local JARs as a dependency repository"
+            description = "Turns a folder of third-party or proprietary JARs without Maven coordinates or a repository " +
+                "into one versioned ZIP with proper dependency metadata. A modern replacement for flatDir and " +
+                "fileTree(\"libs\"): automatic dependency detection between JARs, category bundles, slim compile " +
+                "JARs, build cache and configuration cache support."
+            tags.set(listOf("dependencies", "local-jars", "flatdir", "vendor", "sdk", "repository", "packaging", "ivy"))
             implementationClass = "lv.brain.gradle.distributor.VendorDistributorSettingsPlugin"
             compatibility {
                 features {
@@ -139,20 +142,23 @@ gradlePlugin {
         }
         create("vendorConsumer") {
             id = "lv.brain.vendor-consumer"
-            displayName = "Vendor SDK Consumer Plugin"
-            description = "Settings plugin (apply in settings.gradle.kts: plugins { id(\"lv.brain.vendor-consumer\") }) that downloads, caches, and resolves versioned vendor SDK bundles across subprojects."
-            tags.set(listOf("vendor", "ivy", "dependencies"))
+            displayName = "Vendor JARs Consumer: use a packaged vendor SDK like normal dependencies"
+            description = "Downloads, caches and wires a vendor JAR distribution into every project of a build, so " +
+                "unpublished JARs are used like Maven dependencies: vendor.bundle(\"client\"), a version per branch, " +
+                "local overrides and a classpath clash check. Works with the configuration cache and Isolated Projects."
+            tags.set(listOf("dependencies", "local-jars", "flatdir", "vendor", "sdk", "offline", "cache"))
             implementationClass = "lv.brain.gradle.consumer.VendorConsumerSettingsPlugin"
             compatibility {
                 features {
-                    configurationCache = false
+                    configurationCache = true
                 }
             }
         }
         create("vendorConsumerProject") {
             id = "lv.brain.vendor-consumer-project"
-            displayName = "Vendor SDK Consumer Project Plugin"
-            description = "Project plugin auto-applied by lv.brain.vendor-consumer (or in build.gradle.kts) providing vendor.bundle(\"name\") dependency accessors and automatic Java setup."
+            displayName = "Vendor JARs Consumer (project helper)"
+            description = "Typed vendor.bundle(...) and vendor.module(...) accessors for the Kotlin DSL. Applied " +
+                "automatically by lv.brain.vendor-consumer."
             tags.set(listOf("vendor", "kotlin-dsl", "dependencies"))
             implementationClass = "lv.brain.gradle.consumer.VendorConsumerProjectPlugin"
             compatibility {
@@ -167,8 +173,8 @@ gradlePlugin {
 publishing {
     publications.withType<MavenPublication>().configureEach {
         pom {
-            name.set("Vendor Gradle Plugin")
-            description.set("Gradle settings and project plugins for packaging and consuming vendor SDK JAR distributions.")
+            name.set("Vendor JARs Gradle Plugins")
+            description.set("Package local third-party or proprietary JARs as a versioned dependency repository and use them like Maven dependencies; a modern replacement for flatDir.")
             url.set("https://github.com/brain-lv/gradle-vendor-plugin")
             licenses {
                 license {

@@ -7,6 +7,7 @@
 
 package lv.brain.gradle.distributor
 
+import lv.brain.gradle.core.ReproducibleEntries.withFixedTime
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.FileTree
@@ -78,7 +79,8 @@ abstract class PackageVendorZipTask : DefaultTask() {
             writeZipEntry(zos, "module-dependencies.json", graphFile)
 
             ivyRoot.walkTopDown()
-                .filter { it.isFile }
+                .onEnter { !it.name.startsWith(".") }
+                .filter { it.isFile && !it.name.startsWith(".") }
                 .map { it to "${VendorJarScanner.IVY_DIR_NAME}/${it.relativeTo(ivyRoot).invariantSeparatorsPath}" }
                 .sortedBy { it.second }
                 .forEach { (file, entryName) -> writeZipEntry(zos, entryName, file) }
@@ -92,7 +94,7 @@ abstract class PackageVendorZipTask : DefaultTask() {
     }
 
     private fun writeZipEntry(zos: ZipOutputStream, entryName: String, file: File) {
-        val entry = ZipEntry(entryName).apply { time = 0L }
+        val entry = ZipEntry(entryName).withFixedTime()
         zos.putNextEntry(entry)
         file.inputStream().buffered(64 * 1024).use { it.copyTo(zos) }
         zos.closeEntry()

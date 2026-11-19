@@ -11,7 +11,7 @@ import lv.brain.gradle.core.CategoryRule
 import lv.brain.gradle.core.CompilePackages
 import lv.brain.gradle.core.DependencyExcludes
 import lv.brain.gradle.core.DistributorVendorConfig
-import lv.brain.gradle.core.GitExcludeManager
+import lv.brain.gradle.core.GitExcludeSource
 import lv.brain.gradle.core.GradleSupport
 import lv.brain.gradle.core.VendorRepositoryLayout.addVendorIvyRepository
 import org.gradle.api.Action
@@ -164,7 +164,7 @@ class VendorDistributorSettingsPlugin : Plugin<Settings> {
     override fun apply(settings: Settings) {
         GradleSupport.requireSupported("lv.brain.vendor-distributor")
         val baseConfig = DistributorVendorConfig.load(settings)
-        if (baseConfig.gitExclude) GitExcludeManager.ensureExcluded(settings.rootDir)
+        if (baseConfig.gitExclude) GitExcludeSource.ensure(settings)
 
         val dslExt = settings.extensions.create(
             "vendorDistributor",

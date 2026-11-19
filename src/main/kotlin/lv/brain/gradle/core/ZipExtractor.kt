@@ -14,16 +14,24 @@ import java.nio.file.StandardCopyOption
 import java.util.zip.ZipInputStream
 
 object ZipExtractor {
-    fun extractAtomically(zipFile: File, extractDir: File) {
-        val readyMarker = File(extractDir, ".vendor-ready")
-        if (readyMarker.exists()) return
+    private const val READY_MARKER = ".vendor-ready"
+
+    fun isUnpacked(extractDir: File): Boolean = File(extractDir, READY_MARKER).isFile
+
+    fun isCurrent(zipFile: File, extractDir: File): Boolean {
+        val marker = File(extractDir, READY_MARKER)
+        return marker.isFile && marker.readText() == fingerprint(zipFile)
+    }
+
+    fun extractIfChanged(zipFile: File, extractDir: File) {
+        if (isCurrent(zipFile, extractDir)) return
 
         extractDir.parentFile.mkdirs()
         val lockFile = File(extractDir.parentFile, "${extractDir.name}.lock")
 
         RandomAccessFile(lockFile, "rw").channel.use { channel ->
             channel.lock().use {
-                if (readyMarker.exists()) return
+                if (isCurrent(zipFile, extractDir)) return
 
                 val stagingDir = File(extractDir.parentFile, "${extractDir.name}.staging")
                 if (stagingDir.exists()) stagingDir.deleteRecursively()
@@ -48,13 +56,16 @@ object ZipExtractor {
                         }
                     }
 
+                    File(stagingDir, READY_MARKER).writeText(fingerprint(zipFile))
                     if (extractDir.exists()) extractDir.deleteRecursively()
                     Files.move(stagingDir.toPath(), extractDir.toPath(), StandardCopyOption.ATOMIC_MOVE)
-                    readyMarker.writeText("source=${zipFile.name}\ntimestamp=${System.currentTimeMillis()}\n")
                 } finally {
                     if (stagingDir.exists()) stagingDir.deleteRecursively()
                 }
             }
         }
     }
+
+    private fun fingerprint(zipFile: File): String =
+        "source=${zipFile.canonicalPath}\nsize=${zipFile.length()}\nmodified=${zipFile.lastModified()}\n"
 }

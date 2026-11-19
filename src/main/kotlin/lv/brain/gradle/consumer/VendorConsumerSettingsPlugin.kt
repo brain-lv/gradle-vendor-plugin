@@ -8,13 +8,13 @@
 package lv.brain.gradle.consumer
 
 import lv.brain.gradle.core.ConsumerVendorConfig
-import lv.brain.gradle.core.GitExcludeManager
+import lv.brain.gradle.core.GitExcludeSource
 import lv.brain.gradle.core.GradleSupport
 import lv.brain.gradle.core.VendorLayout
 import lv.brain.gradle.core.VendorModuleLookup
 import lv.brain.gradle.core.VendorModuleRef
 import lv.brain.gradle.core.VendorRepositoryLayout.addVendorIvyRepository
-import lv.brain.gradle.core.ZipExtractor
+import lv.brain.gradle.core.VendorUnpackSource
 import org.gradle.api.IsolatedAction
 import org.gradle.api.Plugin
 import org.gradle.api.Project
@@ -50,7 +50,7 @@ class VendorConsumerSettingsPlugin @Inject constructor(
     override fun apply(settings: Settings) {
         GradleSupport.requireSupported("lv.brain.vendor-consumer")
         val config = ConsumerVendorConfig.load(settings)
-        if (config.gitExclude) GitExcludeManager.ensureExcluded(settings.rootDir)
+        if (config.gitExclude) GitExcludeSource.ensure(settings)
 
         val baseCacheDir = if (config.cacheMode.equals("project", ignoreCase = true)) {
             File(settings.rootDir, ".vendor")
@@ -130,16 +130,25 @@ private fun ensureUnpacked(settings: Settings, config: ConsumerVendorConfig, ven
     val localDir = config.localVendorDirOverride
     if (localDir != null) {
         require(localDir.exists()) { "Configured vendor.localDir does not exist: $localDir" }
-    } else if (!File(vendorRoot, ".vendor-ready").exists()) {
-        val zipFile: File = config.localZipOverride ?: run {
-            val dep = settings.buildscript.dependencies.create("lv.brain.vendor.dist:vendor-sdk:${config.version}@zip")
-            settings.buildscript.configurations.detachedConfiguration(dep).singleFile
-        }
-        ZipExtractor.extractAtomically(zipFile, vendorRoot)
+        val ivyDir = File(localDir, "ivy")
+        require(ivyDir.exists()) { "Expected Ivy repository directory not found at: ${ivyDir.absolutePath}" }
+        return
     }
 
-    val ivyDir = File(vendorRoot, "ivy")
-    require(ivyDir.exists()) { "Expected Ivy repository directory not found at: ${ivyDir.absolutePath}" }
+    val localZip = config.localZipOverride
+    if (localZip != null) {
+        require(localZip.isFile) { "Configured vendor.localZip does not exist: $localZip" }
+        VendorUnpackSource.ensure(settings, vendorRoot, localZip)
+        return
+    }
+
+    if (VendorUnpackSource.isReady(settings, vendorRoot)) return
+    VendorUnpackSource.ensure(settings, vendorRoot, resolveArchive(settings, config))
+}
+
+private fun resolveArchive(settings: Settings, config: ConsumerVendorConfig): File {
+    val dep = settings.buildscript.dependencies.create("lv.brain.vendor.dist:vendor-sdk:${config.version}@zip")
+    return settings.buildscript.configurations.detachedConfiguration(dep).singleFile
 }
 
 internal class PrepareConsumerProject(
