@@ -8,16 +8,16 @@
 import org.gradle.plugin.compatibility.compatibility
 
 plugins {
-    kotlin("jvm") version "2.4.21"
-    kotlin("plugin.sam.with.receiver") version "2.4.21"
+    alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.sam.with.receiver)
     `java-gradle-plugin`
     jacoco
     signing
 
-    id("com.gradle.plugin-publish") version "2.2.1"
-    id("com.gradleup.shadow") version "9.6.1"
-    id("org.sonarqube") version "7.6.0.18749"
-    id("com.diffplug.spotless") version "8.11.0"
+    alias(libs.plugins.plugin.publish)
+    alias(libs.plugins.shadow)
+    alias(libs.plugins.sonarqube)
+    alias(libs.plugins.spotless)
 }
 
 spotless {
@@ -41,7 +41,7 @@ spotless {
     }
 }
 group = "lv.brain"
-version = "3.0.0"
+version = "3.0.1"
 
 repositories {
     mavenCentral()
@@ -72,22 +72,25 @@ kotlin {
 }
 
 dependencies {
-    implementation("org.ow2.asm:asm:9.11.1")
-    implementation("org.ow2.asm:asm-commons:9.11.1")
-    implementation("org.apache.velocity:velocity-engine-core:2.4.1") {
+    implementation(libs.asm)
+    implementation(libs.asm.commons)
+    implementation(libs.velocity) {
         exclude(group = "org.slf4j")
     }
 
-    testImplementation("org.junit.jupiter:junit-jupiter:5.14.4")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    testImplementation("org.wiremock:wiremock-standalone:3.13.2")
+    testImplementation(libs.junit.jupiter)
+    testImplementation(libs.wiremock)
 
-    kotlinStdlibFloor("org.jetbrains.kotlin:kotlin-stdlib:2.4.21")
+    testRuntimeOnly(libs.junit.platform.launcher)
+
+    kotlinStdlibFloor(libs.kotlin.stdlib.floor)
 }
 
 // Velocity, commons-lang3 and ASM are shaded into the plugin jar, so they never clash with other plugins.
 val shadedPackage = "lv.brain.gradle.shaded"
 val velocityDefaults = tasks.register<Sync>("relocateVelocityDefaults") {
+    group = "build"
+    description = "Copies Velocity's default settings with the class names of the shaded Velocity."
     val velocityJar = configurations.runtimeClasspath.map { classpath -> classpath.filter { it.name.startsWith("velocity-engine-core-") } }
     from(velocityJar.map { files -> zipTree(files.singleFile) }) {
         include("org/apache/velocity/runtime/defaults/*.properties")
@@ -116,6 +119,8 @@ tasks.shadowJar {
 
 // TestKit builds run the shaded plugin in their own Gradle daemons; GradleEnv starts them with this agent.
 val jacocoTestKitAgent = tasks.register<Sync>("jacocoTestKitAgent") {
+    group = "verification"
+    description = "Extracts the JaCoCo agent that the TestKit builds run with."
     from(configurations.named("jacocoAgent").map { agent -> zipTree(agent.singleFile) }) {
         include("jacocoagent.jar")
     }
@@ -134,6 +139,7 @@ tasks.withType<Test>().configureEach {
 }
 
 val jacocoTestKitReport = tasks.register<JacocoReport>("jacocoTestKitReport") {
+    group = "verification"
     description = "Coverage of the plugin as the TestKit builds ran it (the shaded jar)."
     executionData.from(fileTree(layout.buildDirectory.dir("jacoco")) { include("*-testkit.exec") })
     classDirectories.from(tasks.shadowJar.map { jar ->

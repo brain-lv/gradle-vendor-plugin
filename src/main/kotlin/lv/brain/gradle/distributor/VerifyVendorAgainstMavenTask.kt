@@ -111,6 +111,7 @@ abstract class VerifyVendorAgainstMavenTask : DefaultTask() {
         }
 
         val out = reportDir.get().asFile.apply { mkdirs() }
+        val reportText = File(out, "report.txt")
         val report = linkedMapOf(
             "repository" to repository.base,
             "jars" to results.sortedBy { it.module.moduleId }.map {
@@ -124,7 +125,7 @@ abstract class VerifyVendorAgainstMavenTask : DefaultTask() {
             "licenses" to licenseFindings
         )
         File(out, "report.json").writeText(JsonOutput.prettyPrint(JsonOutput.toJson(report)) + "\n")
-        File(out, "report.txt").writeText(text(repository.base, results, skipped, dependencyFindings))
+        reportText.writeText(text(repository.base, results, skipped, dependencyFindings))
 
         val counts = results.groupingBy { it.status }.eachCount()
         val missingCount = dependencyFindings.sumOf { (it["missing"] as List<*>).size }
@@ -132,7 +133,7 @@ abstract class VerifyVendorAgainstMavenTask : DefaultTask() {
             "Vendor Maven check against {}: {} jar(s) checked: {} match, {} differ, {} not found, {} error(s); {} skipped " +
                 "(vendor-private, or not known to be public); {} published dependency(ies) the graph does not reach. Report: {}",
             repository.base, results.size, counts[MATCH] ?: 0, counts[DIFFERS] ?: 0, counts[NOT_FOUND] ?: 0, counts[ERROR] ?: 0,
-            skipped.size, missingCount, File(out, "report.txt")
+            skipped.size, missingCount, reportText
         )
         results.filter { it.status == DIFFERS }.forEach {
             logger.warn("Vendor Maven check: {} ({}) is not the published jar: {}", it.module.jarRelativePath, it.coordinates, it.detail)
@@ -140,7 +141,7 @@ abstract class VerifyVendorAgainstMavenTask : DefaultTask() {
 
         val failures = MavenCheckFindings.failures(failOn.get().map { it.trim().lowercase() }.toSet(), counts, missingCount, licenseFindings.size)
         if (failures.isNotEmpty()) {
-            throw GradleException("Vendor Maven check failed (vendor.mavenCheck.failOn): ${failures.joinToString("; ")}. See ${File(out, "report.txt")}")
+            throw GradleException("Vendor Maven check failed (vendor.mavenCheck.failOn): ${failures.joinToString("; ")}. See $reportText")
         }
     }
 
@@ -250,7 +251,7 @@ internal class VendorMavenLookup(url: String) {
         return when (response.statusCode()) {
             200 -> response.body()
             404 -> null
-            else -> throw IllegalStateException("HTTP ${response.statusCode()} for $uri")
+            else -> error("HTTP ${response.statusCode()} for $uri")
         }
     }
 }

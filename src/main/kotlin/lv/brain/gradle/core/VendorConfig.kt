@@ -25,14 +25,23 @@ data class GroupRule(
     val origin: String? = null
 ) : Serializable {
     companion object {
+        /** A public open-source library. */
+        const val OPEN_SOURCE = "open-source"
+
+        /** Vendor code that the vendor also publishes in a public repository. */
+        const val VENDOR_PUBLIC = "vendor-public"
+
+        /** Vendor code that is not published anywhere. */
+        const val VENDOR_PRIVATE = "vendor-private"
+
         /** The allowed values of [origin]. */
-        val ORIGINS = setOf("open-source", "vendor-public", "vendor-private")
+        val ORIGINS = setOf(OPEN_SOURCE, VENDOR_PUBLIC, VENDOR_PRIVATE)
 
         /** Short forms accepted for [origin]. */
-        val ORIGIN_ALIASES = mapOf("oss" to "open-source", "vendor" to "vendor-private")
+        val ORIGIN_ALIASES = mapOf("oss" to OPEN_SOURCE, "vendor" to VENDOR_PRIVATE)
 
         /** The origins whose jars can be found in a public Maven repository. */
-        val PUBLISHED_ORIGINS = setOf("open-source", "vendor-public")
+        val PUBLISHED_ORIGINS = setOf(OPEN_SOURCE, VENDOR_PUBLIC)
 
         /** Reads `<regex> -> <group>` or `<regex> -> <group> open-source|vendor-public|vendor-private`. */
         fun parse(key: String, raw: String): GroupRule {
@@ -284,10 +293,10 @@ data class DistributorVendorConfig(
                 }
 
             val categoryRules = src.allFilePropertyKeys()
-                .filter { it.startsWith("vendor.category.") }
+                .filter { it.startsWith(Keys.CATEGORY) }
                 .sorted()
                 .mapNotNull { key ->
-                    val categoryName = key.removePrefix("vendor.category.").trim()
+                    val categoryName = key.removePrefix(Keys.CATEGORY).trim()
                     val rawPatterns = src.rawFileProperty(key)
                         ?.split(",")
                         ?.map { it.trim() }
@@ -322,10 +331,10 @@ data class DistributorVendorConfig(
                 } ?: false,
                 slimZipInclude = DependencyExcludes.parseList(src.get("vendor.slimZip.include")),
                 slimZipExclude = DependencyExcludes.parseList(src.get("vendor.slimZip.exclude")),
-                dependencyAdd = DependencyOverrides.parse(src.get("vendor.dependencyAdd"), "vendor.dependencyAdd"),
-                dependencyRemove = DependencyOverrides.parse(src.get("vendor.dependencyRemove"), "vendor.dependencyRemove"),
-                pomCheck = src.get("vendor.pomCheck")?.let { pomCheckMode(it, "vendor.pomCheck") } ?: "off",
-                missingClasses = src.get("vendor.missingClasses")?.let { missingClassesMode(it, "vendor.missingClasses") } ?: "warn",
+                dependencyAdd = DependencyOverrides.parse(src.get(Keys.DEPENDENCY_ADD), Keys.DEPENDENCY_ADD),
+                dependencyRemove = DependencyOverrides.parse(src.get(Keys.DEPENDENCY_REMOVE), Keys.DEPENDENCY_REMOVE),
+                pomCheck = src.get(Keys.POM_CHECK)?.let { pomCheckMode(it, Keys.POM_CHECK) } ?: "off",
+                missingClasses = src.get(Keys.MISSING_CLASSES)?.let { missingClassesMode(it, Keys.MISSING_CLASSES) } ?: "warn",
                 missingClassesScope = (src.get("vendor.missingClasses.scope") ?: "vendor").trim().lowercase().also {
                     require(it in setOf("vendor", "all")) { "Invalid vendor.missingClasses.scope '$it'. Use vendor or all." }
                 },
@@ -333,7 +342,7 @@ data class DistributorVendorConfig(
                 publishUsername = src.get("vendor.publish.username", "VENDOR_PUBLISH_USERNAME"),
                 diffBaseline = src.get("vendor.diff.baseline")?.let { src.resolvePath(it) },
                 signingKeyFile = src.get("vendor.signing.key")?.let { src.resolvePath(it) },
-                jpmsCheck = src.get("vendor.jpmsCheck")?.let { missingClassesMode(it, "vendor.jpmsCheck") } ?: "warn",
+                jpmsCheck = src.get(Keys.JPMS_CHECK)?.let { missingClassesMode(it, Keys.JPMS_CHECK) } ?: "warn",
                 mavenCheckUrl = src.get("vendor.mavenCheck.url", "VENDOR_MAVEN_CHECK_URL") ?: "https://repo.maven.apache.org/maven2",
                 mavenCheckFailOn = DependencyExcludes.parseList(src.get("vendor.mavenCheck.failOn")).map { it.lowercase() }.also { values ->
                     val unknown = values - setOf("differs", "notfound", "dependencies", "licenses")
@@ -343,7 +352,7 @@ data class DistributorVendorConfig(
                 },
                 licensesAllow = DependencyExcludes.parseList(src.get("vendor.licenses.allow")),
                 licensesDeny = DependencyExcludes.parseList(src.get("vendor.licenses.deny")),
-                licensesUnknown = src.get("vendor.licenses.unknown")?.let { missingClassesMode(it, "vendor.licenses.unknown") } ?: "warn"
+                licensesUnknown = src.get(Keys.LICENSES_UNKNOWN)?.let { missingClassesMode(it, Keys.LICENSES_UNKNOWN) } ?: "warn"
             )
         }
     }
@@ -404,26 +413,26 @@ data class ConsumerVendorConfig(
             "vendor.slimZip",
             "vendor.slimZip.include",
             "vendor.slimZip.exclude",
-            "vendor.dependencyAdd",
-            "vendor.dependencyRemove",
-            "vendor.pomCheck",
-            "vendor.missingClasses",
+            Keys.DEPENDENCY_ADD,
+            Keys.DEPENDENCY_REMOVE,
+            Keys.POM_CHECK,
+            Keys.MISSING_CLASSES,
             "vendor.missingClasses.scope",
             "vendor.publish.url",
             "vendor.publish.username",
             "vendor.publish.password",
             "vendor.diff.baseline",
             "vendor.signing.key",
-            "vendor.jpmsCheck",
+            Keys.JPMS_CHECK,
             "vendor.mavenCheck.url",
             "vendor.mavenCheck.failOn",
             "vendor.licenses.allow",
             "vendor.licenses.deny",
-            "vendor.licenses.unknown"
+            Keys.LICENSES_UNKNOWN
         )
         private val DISTRIBUTOR_ONLY_PREFIXES = setOf(
             "vendor.rule.",
-            "vendor.category."
+            Keys.CATEGORY
         )
 
         private val RESERVED_NAMES = setOf(
@@ -525,4 +534,14 @@ object CompilePackages {
 
     fun internalPrefixes(prefixes: Collection<String>): List<String> =
         prefixes.mapNotNull { normalize(it) }.distinct().map { it.replace('.', '/') + "/" }
+}
+
+private object Keys {
+    const val CATEGORY = "vendor.category."
+    const val DEPENDENCY_ADD = "vendor.dependencyAdd"
+    const val DEPENDENCY_REMOVE = "vendor.dependencyRemove"
+    const val POM_CHECK = "vendor.pomCheck"
+    const val MISSING_CLASSES = "vendor.missingClasses"
+    const val JPMS_CHECK = "vendor.jpmsCheck"
+    const val LICENSES_UNKNOWN = "vendor.licenses.unknown"
 }

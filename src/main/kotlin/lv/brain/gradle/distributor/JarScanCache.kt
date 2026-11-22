@@ -236,7 +236,7 @@ internal class JarScanCache(private val dir: File?) {
 
     private fun write(target: File, raw: RawReferences) {
         target.parentFile.mkdirs()
-        val temp = File(target.parentFile, "${target.name}.${Thread.currentThread().id}.tmp")
+        val temp = java.nio.file.Files.createTempFile(target.parentFile.toPath(), target.name, ".tmp").toFile()
         DataOutputStream(GZIPOutputStream(temp.outputStream().buffered())).use { out ->
             out.writeInt(FORMAT)
             out.writeInt(raw.classVersion)

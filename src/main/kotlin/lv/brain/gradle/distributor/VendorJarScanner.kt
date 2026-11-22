@@ -104,55 +104,69 @@ object VendorJarScanner {
         return JarSelection(selected, skipped, defaulted)
     }
 
-    internal fun readFacts(jar: File): JarFacts {
-        var pomProperties: Triple<String, String, String>? = null
-        var pomPropertiesCount = 0
-        val pomXmls = mutableListOf<ByteArray>()
-        val classes = HashSet<String>()
-        val pluginIds = sortedSetOf<String>()
-        var manifest: Attributes? = null
-        val fingerprint = java.util.TreeMap<String, String>()
-        var moduleName: String? = null
-
-        JarFile(jar).use { jf ->
-            manifest = runCatching { jf.manifest?.mainAttributes }.getOrNull()
-            for (entry in jf.entries()) {
-                if (entry.isDirectory) continue
-                val name = entry.name
-                fingerprint[name] = "${entry.crc}:${entry.size}"
-                if (moduleName == null && (name == "module-info.class" || Regex("META-INF/versions/\\d+/module-info\\.class").matches(name))) {
-                    moduleName = runCatching { readModuleName(jf.getInputStream(entry).use { it.readBytes() }) }.getOrNull()
-                }
-                when {
-                    name.startsWith("META-INF/maven/") && name.endsWith("/pom.properties") -> {
-                        pomPropertiesCount++
-                        if (pomProperties == null) {
-                            val props = Properties().apply { jf.getInputStream(entry).use { load(it) } }
-                            val g = props.getProperty("groupId")?.trim()?.takeIf { it.isNotEmpty() }
-                            val a = props.getProperty("artifactId")?.trim()?.takeIf { it.isNotEmpty() }
-                            val v = props.getProperty("version")?.trim()?.takeIf { it.isNotEmpty() }
-                            if (g != null && a != null && v != null) pomProperties = Triple(g, a, v)
-                        }
-                    }
-                    name.startsWith("META-INF/maven/") && name.endsWith("/pom.xml") ->
-                        pomXmls += jf.getInputStream(entry).use { it.readBytes() }
-                    name.startsWith(GRADLE_PLUGINS_DIR) && name.endsWith(".properties") && '/' !in name.removePrefix(GRADLE_PLUGINS_DIR) ->
-                        name.removePrefix(GRADLE_PLUGINS_DIR).removeSuffix(".properties").takeIf { it.isNotEmpty() }?.let { pluginIds += it }
-                    name.endsWith(".class") &&
-                        !name.startsWith("META-INF/") &&
-                        name != "module-info.class" &&
-                        name != "package-info.class" ->
-                        classes += name.removeSuffix(".class")
-                }
-            }
-        }
-        val digest = MessageDigest.getInstance("SHA-256")
-        for ((name, value) in fingerprint) digest.update("$name\u0000$value\n".toByteArray(Charsets.UTF_8))
-        val contentKey = digest.digest().joinToString("") { "%02x".format(it) }
-        return JarFacts(pomProperties.takeIf { pomPropertiesCount == 1 }, pomXmls, manifest, classes, pluginIds.toList(), contentKey, moduleName)
+    internal fun readFacts(jar: File): JarFacts = JarFile(jar).use { jf ->
+        val reader = JarFactsReader(jf)
+        jf.entries().asSequence().filter { !it.isDirectory }.forEach(reader::read)
+        reader.result()
     }
 
-    private fun readModuleName(bytes: ByteArray): String? {
+    private class JarFactsReader(private val jar: JarFile) {
+        private var pomProperties: Triple<String, String, String>? = null
+        private var pomPropertiesCount = 0
+        private val pomXmls = mutableListOf<ByteArray>()
+        private val classes = HashSet<String>()
+        private val pluginIds = sortedSetOf<String>()
+        private val manifest: Attributes? = runCatching { jar.manifest?.mainAttributes }.getOrNull()
+        private val fingerprint = java.util.TreeMap<String, String>()
+        private var moduleName: String? = null
+
+        fun read(entry: java.util.jar.JarEntry) {
+            val name = entry.name
+            fingerprint[name] = "${entry.crc}:${entry.size}"
+            if (moduleName == null && MODULE_INFO.matches(name)) {
+                moduleName = runCatching { readModuleName(bytes(entry)) }.getOrNull()
+            }
+            when {
+                name.startsWith(MAVEN_DIR) && name.endsWith("/pom.properties") -> readPomProperties(entry)
+                name.startsWith(MAVEN_DIR) && name.endsWith("/pom.xml") -> pomXmls += bytes(entry)
+                isPluginDescriptor(name) -> name.removePrefix(GRADLE_PLUGINS_DIR).removeSuffix(".properties").takeIf { it.isNotEmpty() }?.let { pluginIds += it }
+                isClass(name) -> classes += name.removeSuffix(".class")
+            }
+        }
+
+        private fun bytes(entry: java.util.jar.JarEntry): ByteArray = jar.getInputStream(entry).use { it.readBytes() }
+
+        private fun readPomProperties(entry: java.util.jar.JarEntry) {
+            pomPropertiesCount++
+            if (pomProperties != null) return
+            val props = Properties().apply { jar.getInputStream(entry).use { load(it) } }
+            fun value(key: String) = props.getProperty(key)?.trim()?.takeIf { it.isNotEmpty() }
+            val g = value("groupId") ?: return
+            val a = value("artifactId") ?: return
+            val v = value("version") ?: return
+            pomProperties = Triple(g, a, v)
+        }
+
+        private fun isPluginDescriptor(name: String) =
+            name.startsWith(GRADLE_PLUGINS_DIR) && name.endsWith(".properties") && '/' !in name.removePrefix(GRADLE_PLUGINS_DIR)
+
+        private fun isClass(name: String) =
+            name.endsWith(".class") && !name.startsWith("META-INF/") && name != "module-info.class" && name != "package-info.class"
+
+        fun result(): JarFacts {
+            val digest = MessageDigest.getInstance("SHA-256")
+            for ((name, value) in fingerprint) digest.update("$name\u0000$value\n".toByteArray(Charsets.UTF_8))
+            val contentKey = digest.digest().joinToString("") { "%02x".format(it) }
+            return JarFacts(pomProperties.takeIf { pomPropertiesCount == 1 }, pomXmls, manifest, classes, pluginIds.toList(), contentKey, moduleName)
+        }
+
+        private companion object {
+            const val MAVEN_DIR = "META-INF/maven/"
+            val MODULE_INFO = Regex("(META-INF/versions/\\d+/)?module-info\\.class")
+        }
+    }
+
+    internal fun readModuleName(bytes: ByteArray): String? {
         var found: String? = null
         org.objectweb.asm.ClassReader(bytes).accept(
             object : org.objectweb.asm.ClassVisitor(org.objectweb.asm.Opcodes.ASM9) {

@@ -48,7 +48,7 @@ internal object DependencyReduction {
 
             val kept = LinkedHashSet<String>()
             for (dep in direct) {
-                if (!covered.get(index.getValue(dep))) {
+                if (!covered[index.getValue(dep)]) {
                     kept.add(dep)
                 } else {
                     val via = direct.filter { other -> reach[index.getValue(other)]?.get(index.getValue(dep)) == true }.min()

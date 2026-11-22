@@ -1,0 +1,24 @@
+[versions]
+asm = "9.11.1"
+junit = "5.14.4"
+kotlin = "2.4.21"
+kotlin-stdlib-floor = "2.0.20"
+velocity = "2.4.1"
+wiremock = "3.13.2"
+
+[libraries]
+asm = { module = "org.ow2.asm:asm", version.ref = "asm" }
+asm-commons = { module = "org.ow2.asm:asm-commons", version.ref = "asm" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+kotlin-stdlib-floor = { module = "org.jetbrains.kotlin:kotlin-stdlib", version.ref = "kotlin-stdlib-floor" }
+velocity = { module = "org.apache.velocity:velocity-engine-core", version.ref = "velocity" }
+wiremock = { module = "org.wiremock:wiremock-standalone", version.ref = "wiremock" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-sam-with-receiver = { id = "org.jetbrains.kotlin.plugin.sam.with.receiver", version.ref = "kotlin" }
+plugin-publish = { id = "com.gradle.plugin-publish", version = "2.2.1" }
+shadow = { id = "com.gradleup.shadow", version = "9.6.1" }
+sonarqube = { id = "org.sonarqube", version = "7.6.0.18749" }
+spotless = { id = "com.diffplug.spotless", version = "8.11.0" }

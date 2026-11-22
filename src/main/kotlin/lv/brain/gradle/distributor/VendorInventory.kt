@@ -34,7 +34,7 @@ internal data class JarMetadata(
     val origin: String = ORIGIN_UNKNOWN
 ) {
     val isOpenSource: Boolean
-        get() = origin == "open-source" ||
+        get() = origin == GroupRule.OPEN_SOURCE ||
             (origin == ORIGIN_UNKNOWN && (identity == VendorJarScanner.IDENTITY_POM_PROPERTIES || identity == VendorJarScanner.IDENTITY_POM_XML))
 }
 
@@ -53,11 +53,7 @@ internal object VendorInventory {
             val (coords, identity) = VendorJarScanner.identify(jar.file, facts, jar.category, defaultGroup, defaultVersion, groupRules)
             Candidate(jar, facts, coords, identity)
         }.toList()
-        val byModule = LinkedHashMap<String, MutableList<Candidate>>()
-        for (candidate in identified) {
-            val coords = candidate.coords
-            byModule.getOrPut("${coords.group}:${coords.name}:${coords.version}") { mutableListOf() }.add(candidate)
-        }
+        val byModule = identified.groupBy { "${it.coords.group}:${it.coords.name}:${it.coords.version}" }
 
         for ((gav, duplicates) in byModule) {
             if (duplicates.size < 2) continue
