@@ -1,0 +1,36 @@
+#* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * Copyright (c) 2026 Edgars Grinvalds <edgars.grinvalds@brain.lv>
+ *#
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <!-- do_not_remove: published-with-gradle-metadata -->
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>$esc.xml($groupId)</groupId>
+  <artifactId>$esc.xml($artifactId)</artifactId>
+  <version>$esc.xml($version)</version>
+#if($packaging)
+  <packaging>$esc.xml($packaging)</packaging>
+#end
+#if(!$licenses.isEmpty())
+  <licenses>
+#foreach($l in $licenses)
+    <license><name>$esc.xml($l)</name></license>
+#end
+  </licenses>
+#end
+#if(!$dependencies.isEmpty())
+  <dependencies>
+#foreach($d in $dependencies)
+    <dependency>
+      <groupId>$esc.xml($d.group)</groupId>
+      <artifactId>$esc.xml($d.module)</artifactId>
+      <version>$esc.xml($d.version)</version>
+      <scope>$d.scope</scope>
+    </dependency>
+#end
+  </dependencies>
+#end
+</project>

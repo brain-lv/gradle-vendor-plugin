@@ -1,0 +1,20 @@
+#* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * Copyright (c) 2026 Edgars Grinvalds <edgars.grinvalds@brain.lv>
+ *#
+<?xml version="1.0" encoding="UTF-8"?>
+<metadata>
+  <groupId>$esc.xml($groupId)</groupId>
+  <artifactId>$esc.xml($artifactId)</artifactId>
+  <versioning>
+    <latest>$esc.xml($latest)</latest>
+    <release>$esc.xml($latest)</release>
+    <versions>
+#foreach($v in $versions)
+      <version>$esc.xml($v)</version>
+#end
+    </versions>
+  </versioning>
+</metadata>

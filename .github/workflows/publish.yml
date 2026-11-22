@@ -1,0 +1,44 @@
+name: Publish to Gradle Plugin Portal
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: plugin-portal
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Verify release tag matches project version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          BUILD_VERSION=$(grep -E '^version\s*=' build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "Tag version: $TAG_VERSION | Build version: $BUILD_VERSION"
+          if [ "$TAG_VERSION" != "$BUILD_VERSION" ]; then
+            echo "Error: Release tag ($TAG_VERSION) does not match build.gradle.kts version ($BUILD_VERSION)"
+            exit 1
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+
+      - name: Run checks and publish plugins
+        env:
+          GRADLE_PUBLISH_KEY: ${{ secrets.GRADLE_PUBLISH_KEY }}
+          GRADLE_PUBLISH_SECRET: ${{ secrets.GRADLE_PUBLISH_SECRET }}
+          GRADLE_PUBLISH_SIGNING_KEY: ${{ secrets.GRADLE_PUBLISH_SIGNING_KEY }}
+          GRADLE_PUBLISH_SIGNING_KEY_ID: ${{ secrets.GRADLE_PUBLISH_SIGNING_KEY_ID }}
+          GRADLE_PUBLISH_SIGNING_SECRET: ${{ secrets.GRADLE_PUBLISH_SIGNING_SECRET }}
+        run: ./gradlew check publishPlugins --stacktrace

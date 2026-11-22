@@ -1,0 +1,163 @@
+#* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * Copyright (c) 2026 Edgars Grinvalds <edgars.grinvalds@brain.lv>
+ *#
+#macro(part $p)#if($p.anchor)<a href="#$p.anchor">$esc.html($p.text)</a>#elseif($p.muted)<span class="muted">$esc.html($p.text)</span>#else$esc.html($p.text)#end#end
+#macro(cell $c)#foreach($p in $c.parts)#part($p)#if($foreach.hasNext)$c.separator#end#end#end
+#macro(table $t)
+<div class="scroll"><table>
+<thead><tr>#foreach($h in $t.head)<th>$esc.html($h)</th>#end</tr></thead>
+<tbody>
+#foreach($row in $t.rows)
+<tr>#foreach($c in $row)<td>#cell($c)</td>#end</tr>
+#end
+</tbody>
+</table></div>
+#end
+#macro(topic $topic $badge)
+<details class="att"><summary><span class="badge $badge">$topic.count</span> $esc.html($topic.title)</summary><div class="body">
+#if($topic.table)
+#table($topic.table)
+#end
+#foreach($cycle in $topic.cycles)
+<div class="item"><b>#part($cycle.removedFrom) &rarr; #part($cycle.removedTo)</b> removed from the metadata
+<div class="muted">cycle: #cell($cycle.path)</div>
+<ul>
+#foreach($e in $cycle.edges)
+<li>$esc.html($e.from) &rarr; $esc.html($e.to)#if($e.removed) <span class="badge warn">removed</span>#end
+#foreach($line in $e.evidence)
+<div class="ev">$esc.html($line)</div>
+#end
+</li>
+#end
+</ul></div>
+#end
+#if($topic.links)
+<p>#cell($topic.links)</p>
+#end
+</div></details>
+#end
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vendor modules $esc.html($version)</title>
+<style>
+#[[
+:root{--bg:#fbfbfa;--fg:#1d1f21;--muted:#6b6f76;--line:#e2e2df;--card:#fff;--accent:#2f5fb3;--warn:#a5520c;--warnbg:#fdf0e2;--ok:#2d6a3e;--okbg:#e5f2e8;--tag:#eef0f3}
+@media (prefers-color-scheme:dark){:root{--bg:#16181b;--fg:#e4e6e9;--muted:#9aa0a8;--line:#2c3036;--card:#1d2024;--accent:#8fb3f0;--warn:#f0a868;--warnbg:#3a2a1a;--ok:#8bd19c;--okbg:#1d3324;--tag:#2a2e34}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1100px;margin:0 auto;padding:24px 16px}
+h1{font-size:24px;margin:0 0 16px}h2{font-size:17px;margin:28px 0 10px}h4{margin:14px 0 4px;font-size:13px}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}.muted{color:var(--muted)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.stat .v{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}.stat .l{color:var(--muted);font-size:12px}
+details{background:var(--card);border:1px solid var(--line);border-radius:8px;margin:6px 0}
+summary{cursor:pointer;padding:8px 12px;list-style-position:inside}
+.body{padding:4px 14px 12px;border-top:1px solid var(--line)}.name{font-weight:600}
+.counts{float:right;color:var(--muted);font-variant-numeric:tabular-nums}
+.tag,.badge{display:inline-block;font-size:11px;padding:1px 7px;border-radius:10px;background:var(--tag)}
+.tag.ok{background:var(--okbg);color:var(--ok)}.badge.warn{background:var(--warnbg);color:var(--warn)}
+.ev{color:var(--muted);font-size:12px;margin-left:12px;font-family:ui-monospace,Menlo,Consolas,monospace;word-break:break-all}
+.scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;margin:6px 0;font-size:13px}
+th,td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:500}
+ul{margin:4px 0;padding-left:20px}.item{margin:8px 0}
+.filters{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px}
+.filters input[type=search]{flex:1 1 260px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg)}
+button{padding:5px 10px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--fg);cursor:pointer}
+.foot{margin-top:24px;font-size:12px}
+@media (max-width:600px){.counts{float:none;display:block}}
+]]#
+</style>
+</head>
+<body>
+<main>
+<h1>Vendor modules <span class="muted">$esc.html($version)</span></h1>
+<div class="stats">
+#foreach($s in $stats)
+<div class="stat"><div class="v">$esc.html($s.value)</div><div class="l">$esc.html($s.label)</div></div>
+#end
+</div>
+#if(!$attention.isEmpty())
+<h2>Needs attention</h2>
+#foreach($t in $attention)
+#topic($t "warn")
+#end
+#end
+#if(!$information.isEmpty())
+<h2>For information</h2>
+#foreach($t in $information)
+#topic($t "")
+#end
+#end
+<h2>Jars</h2>
+<div class="filters">
+<input id="q" type="search" placeholder="Filter by name, group, jar, licence, category" aria-label="Filter">
+<label><input type="checkbox" id="compile"> compile only</label>
+<label><input type="checkbox" id="flagged"> needs attention only</label>
+<button type="button" id="expand">Expand all</button><span id="shown" class="muted"></span>
+</div>
+<div id="mods">
+#foreach($jar in $jars)
+<details class="mod" id="$jar.anchor" data-search="$esc.html($jar.search)" data-compile="$jar.compile" data-flagged="$jar.flagged">
+<summary><span class="name">$esc.html($jar.id)</span> <span class="muted">$esc.html($jar.coordinates)</span>#foreach($c in $jar.categories) <span class="tag">$esc.html($c)</span>#end#if($jar.compileTag == "compile") <span class="tag ok">compile</span>#elseif($jar.compileTag) <span class="tag">$jar.compileTag</span>#end#foreach($f in $jar.flags) <span class="badge warn">$esc.html($f)</span>#end<span class="counts">$jar.dependencies.size() &darr; $jar.userCount &uarr;</span></summary>
+<div class="body">
+#table($jar.details)
+#if($jar.compileReason)
+<p><b>On the compile classpath:</b> $esc.html($jar.compileReason)</p>
+#end
+#if(!$jar.pluginIds.isEmpty())
+<p><b>Gradle plugins:</b> #foreach($p in $jar.pluginIds)$esc.html($p)#if($foreach.hasNext), #end#end</p>
+#end
+<h4>Depends on ($jar.dependencies.size())</h4>
+#if($jar.dependencies.isEmpty())
+<p class="muted">nothing</p>
+#else
+<ul>
+#foreach($d in $jar.dependencies)
+<li>#part($d.link)
+#foreach($line in $d.evidence)
+<div class="ev">$esc.html($line)</div>
+#end
+</li>
+#end
+</ul>
+#end
+#if($jar.compileDependencies)
+<h4>Compile dependencies</h4>
+<p>#cell($jar.compileDependencies)</p>
+#end
+#if(!$jar.redundant.isEmpty())
+<h4>Left out because another dependency brings them</h4>
+<ul>
+#foreach($r in $jar.redundant)
+<li>#part($r.to) <span class="muted">through #part($r.via)</span></li>
+#end
+</ul>
+#end
+<h4>Used by ($jar.userCount)</h4>
+<p>#cell($jar.users)</p>
+</div>
+</details>
+#end
+</div>
+<p class="muted foot">Written by vendorReport from module-dependencies.json. &darr; dependencies, &uarr; jars that use it.</p>
+</main>
+<script>
+#[[
+(function(){var q=document.getElementById('q'),c=document.getElementById('compile'),f=document.getElementById('flagged'),s=document.getElementById('shown'),
+mods=[].slice.call(document.querySelectorAll('.mod'));function apply(){var t=q.value.toLowerCase().trim(),n=0;mods.forEach(function(m){
+var ok=(!t||m.dataset.search.indexOf(t)>=0)&&(!c.checked||m.dataset.compile==='true')&&(!f.checked||m.dataset.flagged==='true');m.style.display=ok?'':'none';if(ok)n++});
+s.textContent=n+' of '+mods.length+' shown'}[q,c,f].forEach(function(e){e.addEventListener('input',apply)});
+var open=false;document.getElementById('expand').addEventListener('click',function(e){open=!open;mods.forEach(function(m){if(m.style.display!=='none')m.open=open});e.target.textContent=open?'Collapse all':'Expand all'});
+window.addEventListener('hashchange',function(){var m=document.getElementById(location.hash.slice(1));if(m&&m.tagName==='DETAILS')m.open=true});
+if(location.hash){var m=document.getElementById(location.hash.slice(1));if(m)m.open=true}apply()})();
+]]#
+</script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+#* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ *
+ * Copyright (c) 2026 Edgars Grinvalds <edgars.grinvalds@brain.lv>
+ *#
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- do_not_remove: published-with-gradle-metadata -->
+<ivy-module version="2.0">
+    <info organisation="$esc.xml($organisation)" module="$esc.xml($module)" revision="$esc.xml($revision)" status="release"/>
+    <configurations>
+        <conf name="default" visibility="public" extends="runtime"/>
+        <conf name="runtime" visibility="public"/>
+        <conf name="compile" visibility="public"/>
+    </configurations>
+    <publications/>
+#if(!$dependencies.isEmpty())
+    <dependencies>
+#foreach($d in $dependencies)
+        <dependency org="$esc.xml($d.group)" name="$esc.xml($d.module)" rev="$esc.xml($d.version)" conf="compile->compile;runtime->runtime"/>
+#end
+    </dependencies>
+#end
+</ivy-module>

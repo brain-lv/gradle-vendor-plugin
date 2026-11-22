@@ -1,0 +1,5 @@
+# Filled by the build: downloaded and built jars, and the generated ivy/ folder.
+/acme-platform/
+/build/
+/acme-core/build/
+/.gradle/
