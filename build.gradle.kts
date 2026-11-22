@@ -8,8 +8,8 @@
 import org.gradle.plugin.compatibility.compatibility
 
 plugins {
-    kotlin("jvm") version "2.3.20"
-    kotlin("plugin.sam.with.receiver") version "2.3.20"
+    kotlin("jvm") version "2.4.21"
+    kotlin("plugin.sam.with.receiver") version "2.4.21"
     `java-gradle-plugin`
     jacoco
     signing
@@ -82,7 +82,7 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.wiremock:wiremock-standalone:3.13.2")
 
-    kotlinStdlibFloor("org.jetbrains.kotlin:kotlin-stdlib:2.0.20")
+    kotlinStdlibFloor("org.jetbrains.kotlin:kotlin-stdlib:2.4.21")
 }
 
 // Velocity, commons-lang3 and ASM are shaded into the plugin jar, so they never clash with other plugins.
