@@ -59,38 +59,44 @@ internal object PathPatterns {
         val sb = StringBuilder()
         var i = 0
         while (i < segment.length) {
-            when (val c = segment[i]) {
-                '*' -> {
-                    while (i + 1 < segment.length && segment[i + 1] == '*') i++
-                    sb.append("[^/]*")
-                }
-                '?' -> sb.append("[^/]")
-                '[' -> {
-                    val close = segment.indexOf(']', startIndex = i + 2)
-                    if (close == -1) {
-                        sb.append("\\[")
-                    } else {
-                        var body = segment.substring(i + 1, close)
-                        if (body.startsWith("!")) body = "^" + body.substring(1)
-                        sb.append('[').append(body.replace("\\", "\\\\")).append(']')
-                        i = close
-                    }
-                }
-                '{' -> {
-                    val close = matchingBrace(segment, i)
-                    if (close == -1) {
-                        sb.append("\\{")
-                    } else {
-                        val alternatives = splitTopLevel(segment.substring(i + 1, close))
-                        sb.append("(?:").append(alternatives.joinToString("|") { segmentToRegex(it) }).append(')')
-                        i = close
-                    }
-                }
-                else -> sb.append(escape(c))
-            }
-            i++
+            i = when (val c = segment[i]) {
+                '*' -> star(segment, i, sb)
+                '?' -> i.also { sb.append("[^/]") }
+                '[' -> characterClass(segment, i, sb)
+                '{' -> alternatives(segment, i, sb)
+                else -> i.also { sb.append(escape(c)) }
+            } + 1
         }
         return sb.toString()
+    }
+
+    private fun star(segment: String, start: Int, sb: StringBuilder): Int {
+        var i = start
+        while (i + 1 < segment.length && segment[i + 1] == '*') i++
+        sb.append("[^/]*")
+        return i
+    }
+
+    private fun characterClass(segment: String, start: Int, sb: StringBuilder): Int {
+        val close = segment.indexOf(']', startIndex = start + 2)
+        if (close == -1) {
+            sb.append("\\[")
+            return start
+        }
+        val body = segment.substring(start + 1, close).let { if (it.startsWith("!")) "^" + it.substring(1) else it }
+        sb.append('[').append(body.replace("\\", "\\\\")).append(']')
+        return close
+    }
+
+    private fun alternatives(segment: String, start: Int, sb: StringBuilder): Int {
+        val close = matchingBrace(segment, start)
+        if (close == -1) {
+            sb.append("\\{")
+            return start
+        }
+        val options = splitTopLevel(segment.substring(start + 1, close))
+        sb.append("(?:").append(options.joinToString("|") { segmentToRegex(it) }).append(')')
+        return close
     }
 
     private fun matchingBrace(text: String, open: Int): Int {

@@ -99,7 +99,7 @@ object IvyRepositoryGenerator {
             requireSafeCoordinate("category", category, category)
             owners.getOrPut("$bundleGroup/$category-$version") { ArrayList() }.add("bundle $bundleGroup:$category:$version")
         }
-        val clashes = owners.filterValues { it.size > 1 }
+        val clashes = owners.filterValues { it.size > 1 }.mapValues { (_, ids) -> ids.toList() }
         require(clashes.isEmpty()) {
             "Vendor modules share a repository folder (ivy/<group>/<name>-<version>), which would mix their metadata: " +
                 clashes.entries.joinToString("; ") { (dir, ids) -> "ivy/$dir: ${ids.joinToString()}" } +

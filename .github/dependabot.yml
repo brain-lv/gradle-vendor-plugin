@@ -10,6 +10,9 @@ updates:
       default-days: 7
     commit-message:
       prefix: "build"
+    ignore:
+      # Floor of the Gradle 8 compatibility test (KotlinStdlibFloorTest): Kotlin of Gradle 8.11, never raised.
+      - dependency-name: "org.jetbrains.kotlin:kotlin-stdlib"
     groups:
       gradle-minor-and-patch:
         update-types: ["minor", "patch"]

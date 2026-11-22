@@ -28,17 +28,12 @@ internal object VendorModuleLookup {
         }
 
         val groups = candidates.map { it.group }.distinct()
-        if (groups.size > 1) {
-            throw IllegalArgumentException(
-                "vendor.module(): '$name' exists in several groups (${groups.joinToString()}); name the group: " +
-                    "vendor.module(group, name)"
-            )
+        require(groups.size <= 1) {
+            "vendor.module(): '$name' exists in several groups (${groups.joinToString()}); name the group: vendor.module(group, name)"
         }
-        if (candidates.size > 1) {
-            throw IllegalArgumentException(
-                "vendor.module(): '${groups.single()}:$name' is published in several versions " +
-                    "(${candidates.joinToString { it.version }}); declare the dependency with its full coordinates instead"
-            )
+        require(candidates.size <= 1) {
+            "vendor.module(): '${groups.single()}:$name' is published in several versions " +
+                "(${candidates.joinToString { it.version }}); declare the dependency with its full coordinates instead"
         }
         return candidates.single().notation
     }

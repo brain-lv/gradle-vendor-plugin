@@ -11,6 +11,7 @@ import java.io.File
 import java.util.TreeMap
 import java.util.TreeSet
 import lv.brain.gradle.core.ClassExcludes
+import lv.brain.gradle.core.GroupRule
 import lv.brain.gradle.core.LicensePolicy
 import org.gradle.api.GradleException
 import org.gradle.api.logging.Logger
@@ -174,7 +175,7 @@ internal class VendorJarChecks(
 
     fun checkLicenses(policy: LicensePolicy): Map<String, Any>? {
         if (!policy.active) return null
-        val checked = inventory.filter { it.origin != "vendor-private" }
+        val checked = inventory.filter { it.origin != GroupRule.VENDOR_PRIVATE }
         val violations = checked.filter { it.licenses.isNotEmpty() && !policy.accepts(it.licenses) }
         val unknown = checked.filter { it.licenses.isEmpty() }
         if (unknown.isNotEmpty() && policy.unknown != MISSING_OFF) {

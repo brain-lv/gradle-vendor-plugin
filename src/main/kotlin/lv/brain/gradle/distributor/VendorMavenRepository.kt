@@ -205,7 +205,7 @@ internal object VendorMavenLayout {
             versionsByArtifact.getOrPut("$bundleGroup:$category") { sortedSetOf() } += version
         }
 
-        for ((coordinate, versions) in versionsByArtifact) {
+        for ((coordinate, versions) in versionsByArtifact.mapValues { (_, set) -> set.toList() }) {
             val (group, artifact) = coordinate.split(':')
             val dir = File(out, "${group.replace('.', '/')}/$artifact")
             File(dir, "maven-metadata.xml").writeText(metadata(group, artifact, versions.toList()))

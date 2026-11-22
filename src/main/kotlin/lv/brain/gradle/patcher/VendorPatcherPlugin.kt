@@ -43,24 +43,24 @@ import java.io.File
  * }
  * ```
  */
-abstract class VendorPatcherExtension {
+interface VendorPatcherExtension {
     /** The folder to patch. Defaults to `vendor` in the project directory. Its `ivy/` folder is never copied. */
-    abstract val sourceDir: DirectoryProperty
+    val sourceDir: DirectoryProperty
 
     /** The folder with the numbered patch files. Defaults to `internal-patches` in the project directory. */
-    abstract val patchesDir: DirectoryProperty
+    val patchesDir: DirectoryProperty
 
     /** Where the patched copy is written. Defaults to `build/vendor-patched/<name of sourceDir>`. */
-    abstract val outputDir: DirectoryProperty
+    val outputDir: DirectoryProperty
 
     /** When `true`, a patch also applies where the file differs only in spaces, tabs or line endings. Defaults to `false`. */
-    abstract val ignoreWhitespace: Property<Boolean>
+    val ignoreWhitespace: Property<Boolean>
 
     /**
      * When `true`, signature files are removed from jars that a patch changes, so the JVM loads them unsigned.
      * Defaults to `false`: patching a signed jar fails with an explanation.
      */
-    abstract val stripJarSignatures: Property<Boolean>
+    val stripJarSignatures: Property<Boolean>
 }
 
 /**

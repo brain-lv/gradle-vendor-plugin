@@ -73,5 +73,5 @@ object GitExcludeManager {
     private fun normalize(line: String): String = line.trim().trim('/')
 
     private fun escape(path: String): String =
-        path.replace(Regex("""([\\*?\[\]!#])"""), """\\$1""").replace(Regex("^ | $")) { "\\" + it.value }
+        path.replace(Regex("""([\\*?\[\]!#])"""), """\\$1""").replace(Regex("(^ )|( $)")) { "\\" + it.value }
 }

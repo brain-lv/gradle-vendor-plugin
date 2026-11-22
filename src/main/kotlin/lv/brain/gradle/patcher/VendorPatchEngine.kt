@@ -40,6 +40,7 @@ internal object VendorPatchEngine {
     private val SIGNATURE = Regex("""^META-INF/[^/]+\.(SF|RSA|DSA|EC)$""", RegexOption.IGNORE_CASE)
     private val VERSIONED = Regex("""^META-INF/versions/\d+/""")
     const val IGNORED_TOP_LEVEL_DIR = "ivy"
+    private const val CLASS_SUFFIX = ".class"
     const val SUPPORTED_TEXT = "Supported steps: .patch and .diff files (unified diff), .delete files (paths to remove) and " +
         "folders (files and classes to add or replace)."
 
@@ -189,7 +190,7 @@ internal object VendorPatchEngine {
             val entry = path.removePrefix("$jarPath/")
             val target = "$jarPath!/$entry"
             val jar = changes.jar(jarPath, target)
-            if (entry.endsWith(".class")) checkClass(target, entry, bytes, jar.highestClassVersion(), warnings)
+            if (entry.endsWith(CLASS_SUFFIX)) checkClass(target, entry, bytes, jar.highestClassVersion(), warnings)
             return jar.has(entry).also { jar.put(entry, bytes) }
         }
         if (changes.isDirectory(path)) {
@@ -226,7 +227,7 @@ internal object VendorPatchEngine {
             throw StepFailure(target, "This is not a compiled class file.", "The file was not produced by a Java compiler, or it is damaged.",
                 listOf("Copy the .class file from the compiler output (build/classes) into the step."))
         }
-        val expected = VERSIONED.replace(entry, "").removeSuffix(".class")
+        val expected = VERSIONED.replace(entry, "").removeSuffix(CLASS_SUFFIX)
         if (reader.className != expected && entry.contains('/')) {
             throw StepFailure(target, "The class file holds ${reader.className.replace('/', '.')}, but its path stands for ${expected.replace('/', '.')}.",
                 "The class was put at the wrong path, so the JVM would refuse to load it.",
@@ -493,7 +494,7 @@ internal object VendorPatchEngine {
         }
 
         fun highestClassVersion(): Int? = entries.filter { (name, bytes) ->
-            bytes != null && name.endsWith(".class") && !name.startsWith("META-INF/") && bytes.size > 8
+            bytes != null && name.endsWith(CLASS_SUFFIX) && !name.startsWith("META-INF/") && bytes.size > 8
         }.values.maxOfOrNull { ((it!![6].toInt() and 0xff) shl 8) or (it[7].toInt() and 0xff) }
 
         fun missingEntry(entry: String, target: String): StepFailure {

@@ -22,39 +22,37 @@ import java.util.jar.JarOutputStream
 object SlimJarGenerator {
     fun generateSlimJar(sourceJar: File, targetSlimJar: File) {
         targetSlimJar.parentFile.mkdirs()
-
         JarFile(sourceJar).use { inputJar ->
             JarOutputStream(targetSlimJar.outputStream().buffered(64 * 1024)).use { outJar ->
                 val seenEntries = HashSet<String>()
-                val entries = inputJar.entries()
-
-                while (entries.hasMoreElements()) {
-                    val entry = entries.nextElement()
-                    if (entry.isDirectory || !seenEntries.add(entry.name)) continue
-
-                    when {
-                        entry.name.endsWith(".class") && entry.name != "module-info.class" -> {
-                            val rawBytes = inputJar.getInputStream(entry).use { it.readBytes() }
-                            val slimBytes = stripClassBytecode(rawBytes)
-                            if (slimBytes != null) {
-                                outJar.putNextEntry(JarEntry(entry.name).withFixedTime())
-                                outJar.write(slimBytes)
-                                outJar.closeEntry()
-                            }
-                        }
-                        entry.name == "module-info.class" ||
-                        entry.name == "META-INF/MANIFEST.MF" ||
-                        entry.name.startsWith("META-INF/services/") ||
-                        entry.name.endsWith(".kotlin_module") -> {
-                            outJar.putNextEntry(JarEntry(entry.name).withFixedTime())
-                            inputJar.getInputStream(entry).use { it.copyTo(outJar) }
-                            outJar.closeEntry()
-                        }
-                    }
-                }
+                inputJar.entries().asSequence()
+                    .filter { !it.isDirectory && seenEntries.add(it.name) }
+                    .forEach { entry -> copySlim(inputJar, entry, outJar) }
             }
         }
     }
+
+    private fun copySlim(inputJar: JarFile, entry: JarEntry, outJar: JarOutputStream) {
+        when {
+            entry.name.endsWith(CLASS_SUFFIX) && entry.name != MODULE_INFO -> {
+                val slimBytes = stripClassBytecode(inputJar.getInputStream(entry).use { it.readBytes() }) ?: return
+                outJar.putNextEntry(JarEntry(entry.name).withFixedTime())
+                outJar.write(slimBytes)
+                outJar.closeEntry()
+            }
+            isKeptResource(entry.name) -> {
+                outJar.putNextEntry(JarEntry(entry.name).withFixedTime())
+                inputJar.getInputStream(entry).use { it.copyTo(outJar) }
+                outJar.closeEntry()
+            }
+        }
+    }
+
+    private fun isKeptResource(name: String): Boolean =
+        name == MODULE_INFO || name == "META-INF/MANIFEST.MF" || name.startsWith("META-INF/services/") || name.endsWith(".kotlin_module")
+
+    private const val CLASS_SUFFIX = ".class"
+    private const val MODULE_INFO = "module-info.class"
 
     private fun stripClassBytecode(classBytes: ByteArray): ByteArray? {
         val reader = ClassReader(classBytes)

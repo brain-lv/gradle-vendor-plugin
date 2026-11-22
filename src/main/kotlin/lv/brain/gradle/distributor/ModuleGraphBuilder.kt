@@ -67,7 +67,8 @@ internal class ModuleGraphBuilder(
     private val byId = inventory.associateBy { it.moduleId }
 
     val owners = mutableMapOf<String, String>()
-    val duplicateClassOwners = mutableMapOf<String, MutableList<String>>()
+    private val sharedOwners = mutableMapOf<String, MutableList<String>>()
+    val duplicateClassOwners: Map<String, List<String>> get() = sharedOwners
     val edges = LinkedHashMap<String, LinkedHashSet<String>>()
     val resolutionSources = mutableMapOf<String, String>()
     val evidence = EdgeEvidence()
@@ -85,7 +86,7 @@ internal class ModuleGraphBuilder(
                 if (classExcludes.excludes(internalClassName)) continue
                 val owner = owners.putIfAbsent(internalClassName, meta.moduleId)
                 if (owner != null && owner != meta.moduleId) {
-                    duplicateClassOwners.getOrPut(internalClassName) { mutableListOf(owner) }.add(meta.moduleId)
+                    sharedOwners.getOrPut(internalClassName) { mutableListOf(owner) }.add(meta.moduleId)
                 }
             }
         }

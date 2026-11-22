@@ -143,7 +143,7 @@ internal object VendorDistributionOverlap {
             }
             modules.map { "${it.group}:${it.artifact}" }.distinct()
         }
-        val conflicts = owners.filter { (_, list) ->
+        val conflicts = owners.mapValues { (_, list) -> list.toList() }.filter { (_, list) ->
             list.size > 1 && (list.any { it.second == null } || list.map { it.second }.distinct().size > 1)
         }
         if (conflicts.isNotEmpty()) {

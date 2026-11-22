@@ -21,7 +21,7 @@ jobs:
           BUILD_VERSION=$(grep -E '^version\s*=' build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')
           echo "Tag version: $TAG_VERSION | Build version: $BUILD_VERSION"
           if [ "$TAG_VERSION" != "$BUILD_VERSION" ]; then
-            echo "Error: Release tag ($TAG_VERSION) does not match build.gradle.kts version ($BUILD_VERSION)"
+            echo "Error: Release tag ($TAG_VERSION) does not match build.gradle.kts version ($BUILD_VERSION)" >&2
             exit 1
           fi
 
