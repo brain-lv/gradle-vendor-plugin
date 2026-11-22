@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,6 +16,7 @@ defaults:
 
 jobs:
   build:
+    if: github.event_name != 'workflow_dispatch' || startsWith(github.ref_name, 'dependabot/')
     strategy:
       fail-fast: false
       matrix:
@@ -71,6 +73,7 @@ jobs:
           retention-days: 14
           if-no-files-found: ignore
   samples:
+    if: github.event_name != 'workflow_dispatch' || startsWith(github.ref_name, 'dependabot/')
     strategy:
       fail-fast: false
       matrix:

@@ -21,3 +21,15 @@ The tests cover the Groovy and Kotlin DSL, Isolated Projects and the configurati
 ```
 
 The tests build their own jars and vendor folders, so they need nothing but the Gradle distributions (and, apart from `VendorPluginEndToEndTest`, no Maven repository).
+
+## Updating dependencies
+
+Every dependency of the build is checked against the SHA-256 checksums in `gradle/verification-metadata.xml`. After changing a version, update the checksums with:
+
+```
+gradle/update-verification-metadata.sh
+```
+
+It downloads everything into an empty Gradle home, adds the checksums of new versions and stops if a version that is already listed is served with a different checksum.
+
+Dependabot proposes updates every Monday, at the earliest 7 days after a release. For its pull requests the workflow `Dependabot verification metadata` runs the same script, commits the new checksums to the pull request and starts CI on that commit. Review the release notes of the update before merging.
